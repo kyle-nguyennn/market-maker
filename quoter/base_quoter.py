@@ -5,24 +5,29 @@ from abc import ABC, abstractmethod
 
 from market_handler.market_adapter import MarketState
 
+
 class Side(Enum):
     BID = 'BID'
     ASK = 'ASK'
 
-@dataclass
+
+@dataclass(frozen=True)
 class Quote:
     price: int
     qty: int
     side: Side
 
+
 class BaseQuoter(ABC):
     """
-        Quoter should return `desired` quote.
-        Decision to requote is handle in the execution/control layer
+    Quoter should return the desired quote.
+    The execution/control layer decides whether to re-quote or cancel.
     """
+
     @abstractmethod
     def quote(self, state: MarketState) -> List[Quote]:
         pass
+
 
 class BaseMMQuoter(BaseQuoter):
     @abstractmethod
