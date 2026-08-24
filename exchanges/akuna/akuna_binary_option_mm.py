@@ -1,9 +1,8 @@
 import math
 import random
 from collections import defaultdict
-from dataclasses import dataclass, replace
-from enum import StrEnum
-from typing import Any, Final
+from dataclasses import dataclass
+from typing import Any
 
 from .akuna_binary_option_base import (
     AJARAI_UNDERLYING_ID,
@@ -23,8 +22,6 @@ from .akuna_binary_option_base import (
 # ============================================================================
 # YOUR MARKET MAKER -- fill in the six stubbed methods below
 # ============================================================================
-import logging
-
 @dataclass(frozen=True)
 class PricingModel:
     rate_up_probability: float
@@ -61,7 +58,7 @@ class MarketMaker:
         # internal states
         self.estimator = MarketParameterEstimator()
         self.estimated_market_parameters = None
-        
+
         self.pricer = Pricer(
             num_scenarios=100_000,
             seed=20260822,
@@ -76,7 +73,7 @@ class MarketMaker:
         if quantity > 0:
             # We bought.
             self.shadow_cash -= quantity * price
-        else:# We sold.
+        else:  # We sold.
             self.shadow_cash -= (-quantity) * (1.0 - price)
 
     @property
@@ -90,9 +87,7 @@ class MarketMaker:
         # `self.underlying_state`. Called whenever you quote or price a FOK, and by the grader
         # to log what you thought an option was worth, so keep it free of side effects.
         if self.estimated_market_parameters is None:
-            raise RuntimeError(
-                "warm_up() must run before price_option()"
-            )
+            raise RuntimeError("warm_up() must run before price_option()")
 
         return self.pricer.price(
             option=option,
@@ -108,14 +103,14 @@ class MarketMaker:
         # THEO test calls this, handing you the true parameters; `price_option` above is what
         # prices your live trading.
         return self.pricer.price(
-            market_parameters = market_parameters,
-            option = option,
-            underlying_state = self.underlying_state,
+            market_parameters=market_parameters,
+            option=option,
+            underlying_state=self.underlying_state,
         )
 
     def quote(self, option: BinaryOption, counterparty_id: int) -> Quote:  # type: ignore[empty-body]
         # TODO: return a two-sided `Quote` for `option`.
-        
+
         theo = self.price_option(option)
 
         # Defensive clamp.
@@ -183,25 +178,19 @@ class MarketMaker:
         if edge < 0.02:
             return False
 
-        expected_edge = (
-            edge * fok_order.quantity
-        )
+        expected_edge = edge * fok_order.quantity
 
         # Don't tie up too much bankroll in one FOK.
         if capital_required > 0.15 * self.shadow_cash:
             return False
 
         # Maintain a large solvency reserve.
-        if self.shadow_cash - capital_required < (
-            0.40 * self.initial_cash
-        ):
+        if self.shadow_cash - capital_required < (0.40 * self.initial_cash):
             return False
 
         # Require worthwhile edge relative to capital.
         if capital_required > 0:
-            edge_on_capital = (
-                expected_edge / capital_required
-            )
+            edge_on_capital = expected_edge / capital_required
 
             if edge_on_capital < 0.10:
                 return False
@@ -211,8 +200,10 @@ class MarketMaker:
     def warm_up(self, market_history: MarketHistory) -> None:
         # TODO: consume the burn-in history (e.g. estimate the market parameters).
         self.estimated_market_parameters = self.estimator.fit(market_history)
-    
+
+
 # Helper classes
+
 
 class Pricer:
     """
@@ -385,9 +376,7 @@ class Pricer:
         Using erfc is slightly better numerically in the tails than
         writing 0.5 * (1 + erf(...)).
         """
-        return 0.5 * math.erfc(
-            -x / math.sqrt(2.0)
-        )
+        return 0.5 * math.erfc(-x / math.sqrt(2.0))
 
     # ==================================================================
     # Exact FED pricing
@@ -415,10 +404,7 @@ class Pricer:
         price = 0.0
 
         for terminal_rate, probability in terminal_dist.items():
-            observable = sum(
-                leg.weight * terminal_rate
-                for leg in option.legs
-            )
+            observable = sum(leg.weight * terminal_rate for leg in option.legs)
 
             if observable >= option.strike:
                 price += probability
@@ -437,9 +423,7 @@ class Pricer:
         dist[r] = P(FED = r after current number of steps)
         """
 
-        dist: dict[float, float] = {
-            current_rate: 1.0
-        }
+        dist: dict[float, float] = {current_rate: 1.0}
 
         for _ in range(steps):
             next_dist: dict[float, float] = defaultdict(float)
@@ -448,15 +432,9 @@ class Pricer:
                 (
                     up_probability,
                     down_probability,
-                ) = market_parameters.tilted_rate_probabilities(
-                    rate_value
-                )
+                ) = market_parameters.tilted_rate_probabilities(rate_value)
 
-                stay_probability = (
-                    1.0
-                    - up_probability
-                    - down_probability
-                )
+                stay_probability = 1.0 - up_probability - down_probability
 
                 rate_up = market_parameters.next_rate_value(
                     rate_value,
@@ -468,20 +446,11 @@ class Pricer:
                     -1,
                 )
 
-                next_dist[rate_up] += (
-                    state_probability
-                    * up_probability
-                )
+                next_dist[rate_up] += state_probability * up_probability
 
-                next_dist[rate_down] += (
-                    state_probability
-                    * down_probability
-                )
+                next_dist[rate_down] += state_probability * down_probability
 
-                next_dist[rate_value] += (
-                    state_probability
-                    * stay_probability
-                )
+                next_dist[rate_value] += state_probability * stay_probability
 
             dist = dict(next_dist)
 
@@ -519,18 +488,14 @@ class Pricer:
         leg = option.legs[0]
         steps = option.steps_until_expiry
 
-        current_rate = values[
-            FED_FUNDS_RATE_UNDERLYING_ID
-        ]
+        current_rate = values[FED_FUNDS_RATE_UNDERLYING_ID]
 
         # --------------------------------------------------------------
         # Select company parameters
         # --------------------------------------------------------------
 
         if leg.underlying_id == AJARAI_UNDERLYING_ID:
-            current_value = values[
-                AJARAI_UNDERLYING_ID
-            ]
+            current_value = values[AJARAI_UNDERLYING_ID]
 
             drift = market_parameters.ajarai_drift
             rate_beta = market_parameters.ajarai_rate_beta
@@ -538,9 +503,7 @@ class Pricer:
             idio_std = market_parameters.ajarai_idio_std_dev
 
         elif leg.underlying_id == THERIODIC_UNDERLYING_ID:
-            current_value = values[
-                THERIODIC_UNDERLYING_ID
-            ]
+            current_value = values[THERIODIC_UNDERLYING_ID]
 
             drift = market_parameters.theriodic_drift
             rate_beta = market_parameters.theriodic_rate_beta
@@ -548,14 +511,10 @@ class Pricer:
             idio_std = market_parameters.theriodic_idio_std_dev
 
         else:
-            raise ValueError(
-                "Single-company pricer requires AJR or THR"
-            )
+            raise ValueError("Single-company pricer requires AJR or THR")
 
         if current_value <= 0:
-            raise ValueError(
-                "Company value must be positive for lognormal pricing"
-            )
+            raise ValueError("Company value must be positive for lognormal pricing")
 
         # --------------------------------------------------------------
         # Convert:
@@ -624,17 +583,9 @@ class Pricer:
         #     ]
         # --------------------------------------------------------------
 
-        variance = steps * (
-            (
-                sector_beta
-                * market_parameters.sector_std_dev
-            ) ** 2
-            + idio_std ** 2
-        )
+        variance = steps * ((sector_beta * market_parameters.sector_std_dev) ** 2 + idio_std**2)
 
-        std_dev = math.sqrt(
-            max(variance, 0.0)
-        )
+        std_dev = math.sqrt(max(variance, 0.0))
 
         log_threshold = math.log(threshold)
 
@@ -649,28 +600,15 @@ class Pricer:
             rate_probability,
         ) in terminal_rate_dist.items():
 
-            mean_log = (
-                math.log(current_value)
-                + steps * drift
-                + rate_beta
-                * (terminal_rate - current_rate)
-            )
+            mean_log = math.log(current_value) + steps * drift + rate_beta * (terminal_rate - current_rate)
 
             if std_dev == 0.0:
                 terminal_value = math.exp(mean_log)
 
                 if upper_tail:
-                    conditional_probability = (
-                        1.0
-                        if terminal_value >= threshold
-                        else 0.0
-                    )
+                    conditional_probability = 1.0 if terminal_value >= threshold else 0.0
                 else:
-                    conditional_probability = (
-                        1.0
-                        if terminal_value <= threshold
-                        else 0.0
-                    )
+                    conditional_probability = 1.0 if terminal_value <= threshold else 0.0
 
             elif upper_tail:
                 # P(log S >= log K)
@@ -678,28 +616,17 @@ class Pricer:
                 # = Phi(
                 #     (mean_log - log K) / sigma
                 #   )
-                z = (
-                    mean_log - log_threshold
-                ) / std_dev
+                z = (mean_log - log_threshold) / std_dev
 
-                conditional_probability = (
-                    self._normal_cdf(z)
-                )
+                conditional_probability = self._normal_cdf(z)
 
             else:
                 # P(log S <= log K)
-                z = (
-                    log_threshold - mean_log
-                ) / std_dev
+                z = (log_threshold - mean_log) / std_dev
 
-                conditional_probability = (
-                    self._normal_cdf(z)
-                )
+                conditional_probability = self._normal_cdf(z)
 
-            price += (
-                rate_probability
-                * conditional_probability
-            )
+            price += rate_probability * conditional_probability
 
         return self._clamp_probability(price)
 
@@ -740,41 +667,24 @@ class Pricer:
 
         steps = option.steps_until_expiry
 
-        current_rate = values[
-            FED_FUNDS_RATE_UNDERLYING_ID
-        ]
+        current_rate = values[FED_FUNDS_RATE_UNDERLYING_ID]
 
-        current_ajr = values[
-            AJARAI_UNDERLYING_ID
-        ]
+        current_ajr = values[AJARAI_UNDERLYING_ID]
 
-        current_thr = values[
-            THERIODIC_UNDERLYING_ID
-        ]
+        current_thr = values[THERIODIC_UNDERLYING_ID]
 
         if current_ajr <= 0 or current_thr <= 0:
-            raise ValueError(
-                "Company values must be positive for log-ratio pricing"
-            )
+            raise ValueError("Company values must be positive for log-ratio pricing")
 
-        weight_by_id = {
-            leg.underlying_id: leg.weight
-            for leg in option.legs
-        }
+        weight_by_id = {leg.underlying_id: leg.weight for leg in option.legs}
 
-        w_ajr = weight_by_id[
-            AJARAI_UNDERLYING_ID
-        ]
+        w_ajr = weight_by_id[AJARAI_UNDERLYING_ID]
 
-        w_thr = weight_by_id[
-            THERIODIC_UNDERLYING_ID
-        ]
+        w_thr = weight_by_id[THERIODIC_UNDERLYING_ID]
 
         # Preconditions should already be guaranteed by dispatcher.
         if w_ajr * w_thr >= 0:
-            raise ValueError(
-                "Company spread requires opposite-sign weights"
-            )
+            raise ValueError("Company spread requires opposite-sign weights")
 
         # --------------------------------------------------------------
         # Exact terminal FED distribution
@@ -791,19 +701,13 @@ class Pricer:
         # --------------------------------------------------------------
 
         var_ajr = steps * (
-            (
-                market_parameters.ajarai_sector_beta
-                * market_parameters.sector_std_dev
-            ) ** 2
-            + market_parameters.ajarai_idio_std_dev ** 2
+            (market_parameters.ajarai_sector_beta * market_parameters.sector_std_dev) ** 2
+            + market_parameters.ajarai_idio_std_dev**2
         )
 
         var_thr = steps * (
-            (
-                market_parameters.theriodic_sector_beta
-                * market_parameters.sector_std_dev
-            ) ** 2
-            + market_parameters.theriodic_idio_std_dev ** 2
+            (market_parameters.theriodic_sector_beta * market_parameters.sector_std_dev) ** 2
+            + market_parameters.theriodic_idio_std_dev**2
         )
 
         # --------------------------------------------------------------
@@ -815,19 +719,13 @@ class Pricer:
         covariance = steps * (
             market_parameters.ajarai_sector_beta
             * market_parameters.theriodic_sector_beta
-            * market_parameters.sector_std_dev ** 2
+            * market_parameters.sector_std_dev**2
         )
 
         # Var(log AJR - log THR)
-        variance_diff = (
-            var_ajr
-            + var_thr
-            - 2.0 * covariance
-        )
+        variance_diff = var_ajr + var_thr - 2.0 * covariance
 
-        std_diff = math.sqrt(
-            max(variance_diff, 0.0)
-        )
+        std_diff = math.sqrt(max(variance_diff, 0.0))
 
         price = 0.0
 
@@ -842,13 +740,9 @@ class Pricer:
         # --------------------------------------------------------------
 
         if w_ajr > 0 and w_thr < 0:
-            ratio_threshold = (
-                -w_thr / w_ajr
-            )
+            ratio_threshold = -w_thr / w_ajr
 
-            log_ratio_threshold = math.log(
-                ratio_threshold
-            )
+            log_ratio_threshold = math.log(ratio_threshold)
 
             for (
                 terminal_rate,
@@ -857,52 +751,27 @@ class Pricer:
 
                 mean_ajr = (
                     math.log(current_ajr)
-                    + steps
-                    * market_parameters.ajarai_drift
-                    + market_parameters.ajarai_rate_beta
-                    * (
-                        terminal_rate
-                        - current_rate
-                    )
+                    + steps * market_parameters.ajarai_drift
+                    + market_parameters.ajarai_rate_beta * (terminal_rate - current_rate)
                 )
 
                 mean_thr = (
                     math.log(current_thr)
-                    + steps
-                    * market_parameters.theriodic_drift
-                    + market_parameters.theriodic_rate_beta
-                    * (
-                        terminal_rate
-                        - current_rate
-                    )
+                    + steps * market_parameters.theriodic_drift
+                    + market_parameters.theriodic_rate_beta * (terminal_rate - current_rate)
                 )
 
-                mean_log_ratio = (
-                    mean_ajr - mean_thr
-                )
+                mean_log_ratio = mean_ajr - mean_thr
 
                 if std_diff == 0.0:
-                    conditional_probability = (
-                        1.0
-                        if mean_log_ratio
-                        >= log_ratio_threshold
-                        else 0.0
-                    )
+                    conditional_probability = 1.0 if mean_log_ratio >= log_ratio_threshold else 0.0
 
                 else:
-                    z = (
-                        mean_log_ratio
-                        - log_ratio_threshold
-                    ) / std_diff
+                    z = (mean_log_ratio - log_ratio_threshold) / std_diff
 
-                    conditional_probability = (
-                        self._normal_cdf(z)
-                    )
+                    conditional_probability = self._normal_cdf(z)
 
-                price += (
-                    rate_probability
-                    * conditional_probability
-                )
+                price += rate_probability * conditional_probability
 
         # --------------------------------------------------------------
         # Case 2:
@@ -915,13 +784,9 @@ class Pricer:
         # --------------------------------------------------------------
 
         elif w_ajr < 0 and w_thr > 0:
-            ratio_threshold = (
-                -w_ajr / w_thr
-            )
+            ratio_threshold = -w_ajr / w_thr
 
-            log_ratio_threshold = math.log(
-                ratio_threshold
-            )
+            log_ratio_threshold = math.log(ratio_threshold)
 
             for (
                 terminal_rate,
@@ -930,57 +795,30 @@ class Pricer:
 
                 mean_ajr = (
                     math.log(current_ajr)
-                    + steps
-                    * market_parameters.ajarai_drift
-                    + market_parameters.ajarai_rate_beta
-                    * (
-                        terminal_rate
-                        - current_rate
-                    )
+                    + steps * market_parameters.ajarai_drift
+                    + market_parameters.ajarai_rate_beta * (terminal_rate - current_rate)
                 )
 
                 mean_thr = (
                     math.log(current_thr)
-                    + steps
-                    * market_parameters.theriodic_drift
-                    + market_parameters.theriodic_rate_beta
-                    * (
-                        terminal_rate
-                        - current_rate
-                    )
+                    + steps * market_parameters.theriodic_drift
+                    + market_parameters.theriodic_rate_beta * (terminal_rate - current_rate)
                 )
 
-                mean_log_ratio = (
-                    mean_thr - mean_ajr
-                )
+                mean_log_ratio = mean_thr - mean_ajr
 
                 if std_diff == 0.0:
-                    conditional_probability = (
-                        1.0
-                        if mean_log_ratio
-                        >= log_ratio_threshold
-                        else 0.0
-                    )
+                    conditional_probability = 1.0 if mean_log_ratio >= log_ratio_threshold else 0.0
 
                 else:
-                    z = (
-                        mean_log_ratio
-                        - log_ratio_threshold
-                    ) / std_diff
+                    z = (mean_log_ratio - log_ratio_threshold) / std_diff
 
-                    conditional_probability = (
-                        self._normal_cdf(z)
-                    )
+                    conditional_probability = self._normal_cdf(z)
 
-                price += (
-                    rate_probability
-                    * conditional_probability
-                )
+                price += rate_probability * conditional_probability
 
         else:
-            raise ValueError(
-                "Unexpected company spread weight configuration"
-            )
+            raise ValueError("Unexpected company spread weight configuration")
 
         return self._clamp_probability(price)
 
@@ -1015,22 +853,17 @@ class Pricer:
             terminal_thr,
         ) in scenarios:
 
-            observable = (
-                self._observable_from_terminal_state(
-                    option=option,
-                    rate_value=terminal_rate,
-                    ajarai_value=terminal_ajr,
-                    theriodic_value=terminal_thr,
-                )
+            observable = self._observable_from_terminal_state(
+                option=option,
+                rate_value=terminal_rate,
+                ajarai_value=terminal_ajr,
+                theriodic_value=terminal_thr,
             )
 
             if observable >= option.strike:
                 num_itm += 1
 
-        return (
-            num_itm
-            / len(scenarios)
-        )
+        return num_itm / len(scenarios)
 
     # ==================================================================
     # Monte Carlo scenario generation
@@ -1043,21 +876,13 @@ class Pricer:
         market_parameters: MarketParameters,
     ) -> tuple[tuple[float, float, float], ...]:
 
-        values = self._values_by_underlying_id(
-            underlying_state
-        )
+        values = self._values_by_underlying_id(underlying_state)
 
-        initial_rate = values[
-            FED_FUNDS_RATE_UNDERLYING_ID
-        ]
+        initial_rate = values[FED_FUNDS_RATE_UNDERLYING_ID]
 
-        initial_ajr = values[
-            AJARAI_UNDERLYING_ID
-        ]
+        initial_ajr = values[AJARAI_UNDERLYING_ID]
 
-        initial_thr = values[
-            THERIODIC_UNDERLYING_ID
-        ]
+        initial_thr = values[THERIODIC_UNDERLYING_ID]
 
         state_key = tuple(
             sorted(
@@ -1065,8 +890,7 @@ class Pricer:
                     underlying.underlying_id,
                     underlying.value,
                 )
-                for underlying
-                in underlying_state
+                for underlying in underlying_state
             )
         )
 
@@ -1076,23 +900,16 @@ class Pricer:
             steps,
         )
 
-        cached = self._scenario_cache.get(
-            cache_key
-        )
+        cached = self._scenario_cache.get(cache_key)
 
         if cached is not None:
             return cached
 
         # Private deterministic RNG:
         # do NOT perturb grader/global random state.
-        rng = random.Random(
-            self.seed
-            + 1_000_003 * steps
-        )
+        rng = random.Random(self.seed + 1_000_003 * steps)
 
-        scenarios: list[
-            tuple[float, float, float]
-        ] = []
+        scenarios: list[tuple[float, float, float]] = []
 
         for _ in range(self.num_scenarios):
             rate_value = initial_rate
@@ -1123,21 +940,12 @@ class Pricer:
         result = tuple(scenarios)
 
         if self._max_cache_entries > 0:
-            while (
-                len(self._scenario_cache)
-                >= self._max_cache_entries
-            ):
-                oldest_key = next(
-                    iter(self._scenario_cache)
-                )
+            while len(self._scenario_cache) >= self._max_cache_entries:
+                oldest_key = next(iter(self._scenario_cache))
 
-                del self._scenario_cache[
-                    oldest_key
-                ]
+                del self._scenario_cache[oldest_key]
 
-            self._scenario_cache[
-                cache_key
-            ] = result
+            self._scenario_cache[cache_key] = result
 
         return result
 
@@ -1171,30 +979,20 @@ class Pricer:
         (
             up_probability,
             down_probability,
-        ) = market_parameters.tilted_rate_probabilities(
-            rate_value
-        )
+        ) = market_parameters.tilted_rate_probabilities(rate_value)
 
         draw = rng.random()
 
         if draw < up_probability:
-            next_rate = (
-                market_parameters.next_rate_value(
-                    rate_value,
-                    +1,
-                )
+            next_rate = market_parameters.next_rate_value(
+                rate_value,
+                +1,
             )
 
-        elif (
-            draw
-            < up_probability
-            + down_probability
-        ):
-            next_rate = (
-                market_parameters.next_rate_value(
-                    rate_value,
-                    -1,
-                )
+        elif draw < up_probability + down_probability:
+            next_rate = market_parameters.next_rate_value(
+                rate_value,
+                -1,
             )
 
         else:
@@ -1225,16 +1023,13 @@ class Pricer:
 
         ajr_log_return = (
             market_parameters.ajarai_drift
-            + market_parameters.ajarai_rate_beta
-            * rate_change
-            + market_parameters.ajarai_sector_beta
-            * sector_shock
+            + market_parameters.ajarai_rate_beta * rate_change
+            + market_parameters.ajarai_sector_beta * sector_shock
             + ajr_idio_shock
         )
 
         next_ajr = round(
-            ajarai_value
-            * math.exp(ajr_log_return),
+            ajarai_value * math.exp(ajr_log_return),
             2,
         )
 
@@ -1249,16 +1044,13 @@ class Pricer:
 
         thr_log_return = (
             market_parameters.theriodic_drift
-            + market_parameters.theriodic_rate_beta
-            * rate_change
-            + market_parameters.theriodic_sector_beta
-            * sector_shock
+            + market_parameters.theriodic_rate_beta * rate_change
+            + market_parameters.theriodic_sector_beta * sector_shock
             + thr_idio_shock
         )
 
         next_thr = round(
-            theriodic_value
-            * math.exp(thr_log_return),
+            theriodic_value * math.exp(thr_log_return),
             2,
         )
 
@@ -1276,24 +1068,16 @@ class Pricer:
     def _is_rate_only(
         option: BinaryOption,
     ) -> bool:
-        return all(
-            leg.underlying_id
-            == FED_FUNDS_RATE_UNDERLYING_ID
-            for leg in option.legs
-        )
+        return all(leg.underlying_id == FED_FUNDS_RATE_UNDERLYING_ID for leg in option.legs)
 
     @staticmethod
     def _is_single_company(
         option: BinaryOption,
     ) -> bool:
-        return (
-            len(option.legs) == 1
-            and option.legs[0].underlying_id
-            in {
-                AJARAI_UNDERLYING_ID,
-                THERIODIC_UNDERLYING_ID,
-            }
-        )
+        return len(option.legs) == 1 and option.legs[0].underlying_id in {
+            AJARAI_UNDERLYING_ID,
+            THERIODIC_UNDERLYING_ID,
+        }
 
     @staticmethod
     def _is_company_zero_strike_spread(
@@ -1305,10 +1089,7 @@ class Pricer:
         if abs(option.strike) > 1e-12:
             return False
 
-        ids = {
-            leg.underlying_id
-            for leg in option.legs
-        }
+        ids = {leg.underlying_id for leg in option.legs}
 
         if ids != {
             AJARAI_UNDERLYING_ID,
@@ -1331,33 +1112,19 @@ class Pricer:
         observable = 0.0
 
         for leg in option.legs:
-            if (
-                leg.underlying_id
-                == FED_FUNDS_RATE_UNDERLYING_ID
-            ):
+            if leg.underlying_id == FED_FUNDS_RATE_UNDERLYING_ID:
                 value = rate_value
 
-            elif (
-                leg.underlying_id
-                == AJARAI_UNDERLYING_ID
-            ):
+            elif leg.underlying_id == AJARAI_UNDERLYING_ID:
                 value = ajarai_value
 
-            elif (
-                leg.underlying_id
-                == THERIODIC_UNDERLYING_ID
-            ):
+            elif leg.underlying_id == THERIODIC_UNDERLYING_ID:
                 value = theriodic_value
 
             else:
-                raise ValueError(
-                    "Unknown underlying id: "
-                    f"{leg.underlying_id}"
-                )
+                raise ValueError("Unknown underlying id: " f"{leg.underlying_id}")
 
-            observable += (
-                leg.weight * value
-            )
+            observable += leg.weight * value
 
         return observable
 
@@ -1365,12 +1132,7 @@ class Pricer:
     def _values_by_underlying_id(
         underlying_state: list[Underlying],
     ) -> dict[int, float]:
-        values = {
-            underlying.underlying_id:
-                underlying.value
-            for underlying
-            in underlying_state
-        }
+        values = {underlying.underlying_id: underlying.value for underlying in underlying_state}
 
         required = {
             FED_FUNDS_RATE_UNDERLYING_ID,
@@ -1378,16 +1140,10 @@ class Pricer:
             THERIODIC_UNDERLYING_ID,
         }
 
-        missing = (
-            required
-            - set(values.keys())
-        )
+        missing = required - set(values.keys())
 
         if missing:
-            raise ValueError(
-                "Missing underlying state(s): "
-                f"{sorted(missing)}"
-            )
+            raise ValueError("Missing underlying state(s): " f"{sorted(missing)}")
 
         return values
 
@@ -1399,8 +1155,6 @@ class Pricer:
             max(probability, 0.0),
             1.0,
         )
-        
-import math
 
 
 class MarketParameterEstimator:
@@ -1418,21 +1172,9 @@ class MarketParameterEstimator:
         self.rate_target = rate_target
 
     def fit(self, history):
-        rate = list(
-            history.values_by_underlying_id[
-                FED_FUNDS_RATE_UNDERLYING_ID
-            ]
-        )
-        ajr = list(
-            history.values_by_underlying_id[
-                AJARAI_UNDERLYING_ID
-            ]
-        )
-        thr = list(
-            history.values_by_underlying_id[
-                THERIODIC_UNDERLYING_ID
-            ]
-        )
+        rate = list(history.values_by_underlying_id[FED_FUNDS_RATE_UNDERLYING_ID])
+        ajr = list(history.values_by_underlying_id[AJARAI_UNDERLYING_ID])
+        thr = list(history.values_by_underlying_id[THERIODIC_UNDERLYING_ID])
 
         if not (len(rate) == len(ajr) == len(thr)):
             raise ValueError("Historical series lengths do not match")
@@ -1454,24 +1196,15 @@ class MarketParameterEstimator:
         # Daily FED changes
         # ----------------------------------------------------------
 
-        delta_rate = [
-            round(rate[i + 1] - rate[i], 2)
-            for i in range(len(rate) - 1)
-        ]
+        delta_rate = [round(rate[i + 1] - rate[i], 2) for i in range(len(rate) - 1)]
 
         # ----------------------------------------------------------
         # Company log returns
         # ----------------------------------------------------------
 
-        ajr_returns = [
-            math.log(ajr[i + 1] / ajr[i])
-            for i in range(len(ajr) - 1)
-        ]
+        ajr_returns = [math.log(ajr[i + 1] / ajr[i]) for i in range(len(ajr) - 1)]
 
-        thr_returns = [
-            math.log(thr[i + 1] / thr[i])
-            for i in range(len(thr) - 1)
-        ]
+        thr_returns = [math.log(thr[i + 1] / thr[i]) for i in range(len(thr) - 1)]
 
         (
             ajr_drift,
@@ -1528,18 +1261,14 @@ class MarketParameterEstimator:
             ajarai_idio_std_dev=ajr_idio_std,
             ajarai_rate_beta=ajr_rate_beta,
             ajarai_sector_beta=ajr_sector_beta,
-
             rate_down_probability=rate_down_probability,
             rate_reversion_strength=rate_reversion_strength,
             rate_up_probability=rate_up_probability,
-
             sector_std_dev=sector_std,
-
             theriodic_drift=thr_drift,
             theriodic_idio_std_dev=thr_idio_std,
             theriodic_rate_beta=thr_rate_beta,
             theriodic_sector_beta=thr_sector_beta,
-
             rate_step=self.rate_step,
             rate_target=self.rate_target,
         )
@@ -1629,11 +1358,7 @@ class MarketParameterEstimator:
                     for dd in (-step, 0.0, step):
                         for dk in (-step, 0.0, step):
 
-                            if (
-                                du == 0.0
-                                and dd == 0.0
-                                and dk == 0.0
-                            ):
+                            if du == 0.0 and dd == 0.0 and dk == 0.0:
                                 continue
 
                             candidate_up = p_up + du
@@ -1646,18 +1371,10 @@ class MarketParameterEstimator:
                             if candidate_down <= 0.0:
                                 continue
 
-                            if (
-                                candidate_up
-                                + candidate_down
-                                > 1.0
-                            ):
+                            if candidate_up + candidate_down > 1.0:
                                 continue
 
-                            if not (
-                                0.0
-                                <= candidate_kappa
-                                <= 1.0
-                            ):
+                            if not (0.0 <= candidate_kappa <= 1.0):
                                 continue
 
                             ll = self._rate_score(
@@ -1696,10 +1413,7 @@ class MarketParameterEstimator:
         if p_up + p_down > 1.0:
             total = p_up + p_down
 
-            scale = (
-                (1.0 - eps)
-                / total
-            )
+            scale = (1.0 - eps) / total
 
             p_up *= scale
             p_down *= scale
@@ -1714,8 +1428,14 @@ class MarketParameterEstimator:
             p_down,
             kappa,
         )
-        
-    def _rate_score(self,    rates,    p_up,    p_down,    kappa,):
+
+    def _rate_score(
+        self,
+        rates,
+        p_up,
+        p_down,
+        kappa,
+    ):
         ll = self._rate_log_likelihood(
             rates,
             p_up,
@@ -1728,11 +1448,7 @@ class MarketParameterEstimator:
         unique_rates = len(set(rates[:-1]))
 
         # More data / more state-space coverage => trust likelihood more.
-        information = (
-            n_transitions
-            * max(rate_span / self.rate_step, 1.0)
-            * max(unique_rates, 1)
-        )
+        information = n_transitions * max(rate_span / self.rate_step, 1.0) * max(unique_rates, 1)
 
         # Strong prior when information is low.
         prior_strength = 40.0 / max(information, 1.0)
@@ -1742,15 +1458,12 @@ class MarketParameterEstimator:
         prior_kappa = 0.10
 
         penalty = prior_strength * (
-            4.0 * (p_up - prior_up) ** 2
-            + 4.0 * (p_down - prior_down) ** 2
-            + 2.0 * (kappa - prior_kappa) ** 2
+            4.0 * (p_up - prior_up) ** 2 + 4.0 * (p_down - prior_down) ** 2 + 2.0 * (kappa - prior_kappa) ** 2
         )
 
         return ll - penalty
-    
-        
-    def _rate_log_likelihood(self,rates,p_up_base,p_down_base,kappa):
+
+    def _rate_log_likelihood(self, rates, p_up_base, p_down_base, kappa):
         ll = 0.0
 
         for i in range(len(rates) - 1):
@@ -1772,16 +1485,13 @@ class MarketParameterEstimator:
             ll += math.log(probability)
 
         return ll
-    
+
     def _rate_transition_probability(self, current, observed_next, p_up_base, p_down_base, kappa):
         """
         Exact transition probability under Akuna's rate model.
         """
 
-        tilt = (
-            kappa
-            * (self.rate_target - current)
-        )
+        tilt = kappa * (self.rate_target - current)
 
         p_up = min(
             max(
@@ -1799,11 +1509,7 @@ class MarketParameterEstimator:
             1.0 - p_up,
         )
 
-        p_stay = (
-            1.0
-            - p_up
-            - p_down
-        )
+        p_stay = 1.0 - p_up - p_down
 
         up_rate = max(
             round(
@@ -1841,6 +1547,7 @@ class MarketParameterEstimator:
             probability += p_stay
 
         return probability
+
     # ==============================================================
     # Company model
     # ==============================================================
@@ -1864,10 +1571,7 @@ class MarketParameterEstimator:
         sy = sum(returns)
 
         sxx = sum(x * x for x in delta_rate)
-        sxy = sum(
-            x * y
-            for x, y in zip(delta_rate, returns)
-        )
+        sxy = sum(x * y for x, y in zip(delta_rate, returns))
 
         # Normal equations for:
         #
@@ -1885,18 +1589,11 @@ class MarketParameterEstimator:
             drift = 0.0
             rate_beta = 0.0
         else:
-            drift = (
-                sy * d - b * sxy
-            ) / det
+            drift = (sy * d - b * sxy) / det
 
-            rate_beta = (
-                a * sxy - c * sy
-            ) / det
+            rate_beta = (a * sxy - c * sy) / det
 
-        residuals = [
-            y - drift - rate_beta * x
-            for x, y in zip(delta_rate, returns)
-        ]
+        residuals = [y - drift - rate_beta * x for x, y in zip(delta_rate, returns)]
 
         return drift, rate_beta, residuals
 
@@ -1918,20 +1615,11 @@ class MarketParameterEstimator:
 
         # MLE denominator is fine here: we care about predictive
         # distribution, not an unbiased textbook estimator.
-        var_a = sum(
-            (x - mean_a) ** 2
-            for x in a
-        ) / n
+        var_a = sum((x - mean_a) ** 2 for x in a) / n
 
-        var_b = sum(
-            (x - mean_b) ** 2
-            for x in b
-        ) / n
+        var_b = sum((x - mean_b) ** 2 for x in b) / n
 
-        cov = sum(
-            (x - mean_a) * (y - mean_b)
-            for x, y in zip(a, b)
-        ) / n
+        cov = sum((x - mean_a) * (y - mean_b) for x, y in zip(a, b)) / n
 
         return var_a, var_b, cov
 
@@ -1981,32 +1669,20 @@ class MarketParameterEstimator:
 
         sector_std = 1.0
 
-        beta_a = math.sqrt(
-            abs_rho * var_a
-        )
+        beta_a = math.sqrt(abs_rho * var_a)
 
-        beta_b = math.sqrt(
-            abs_rho * var_b
-        )
+        beta_b = math.sqrt(abs_rho * var_b)
 
         if cov < 0:
             beta_b = -beta_b
 
-        idio_var_a = (
-            var_a - beta_a * beta_a
-        )
+        idio_var_a = var_a - beta_a * beta_a
 
-        idio_var_b = (
-            var_b - beta_b * beta_b
-        )
+        idio_var_b = var_b - beta_b * beta_b
 
-        idio_a = math.sqrt(
-            max(idio_var_a, 0.0)
-        )
+        idio_a = math.sqrt(max(idio_var_a, 0.0))
 
-        idio_b = math.sqrt(
-            max(idio_var_b, 0.0)
-        )
+        idio_b = math.sqrt(max(idio_var_b, 0.0))
 
         return (
             sector_std,
@@ -2034,26 +1710,16 @@ class MarketParameterEstimator:
         mean_x = self._mean(x)
         mean_y = self._mean(y)
 
-        var_x = sum(
-            (value - mean_x) ** 2
-            for value in x
-        )
+        var_x = sum((value - mean_x) ** 2 for value in x)
 
         if var_x < 1e-15:
             return mean_y, 0.0
 
-        cov_xy = sum(
-            (xi - mean_x)
-            * (yi - mean_y)
-            for xi, yi in zip(x, y)
-        )
+        cov_xy = sum((xi - mean_x) * (yi - mean_y) for xi, yi in zip(x, y))
 
         slope = cov_xy / var_x
 
-        intercept = (
-            mean_y
-            - slope * mean_x
-        )
+        intercept = mean_y - slope * mean_x
 
         return intercept, slope
 
