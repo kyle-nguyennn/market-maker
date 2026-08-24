@@ -257,9 +257,12 @@ class Underlying:
             return False
         return self.underlying_id == other.underlying_id
 
+
 # ============================================================================
 # YOUR MARKET MAKER -- fill in the six stubbed methods below
 # ============================================================================
+
+
 @dataclass(frozen=True)
 class PricingModel:
     rate_up_probability: float
@@ -280,6 +283,11 @@ class PricingModel:
 
 
 class MarketMaker:
+    FOK_MIN_EDGE = 0.015
+    RFQ_HARD_CAP = 8
+    RFQ_HALF_SPREAD = 0.05
+    CAPITAL_RESERVE = 0.3
+    
     def __init__(
         self,
         underlying_initial_state: list[Underlying],
@@ -293,7 +301,7 @@ class MarketMaker:
         # shallow balance
         self.initial_cash = cash_balance
         self.shadow_cash = cash_balance
-        self.min_cash_reserve = 0.5 * cash_balance
+        self.min_cash_reserve = self.CAPITAL_RESERVE * cash_balance
         # internal states
         self.estimator = MarketParameterEstimator()
         self.estimated_market_parameters = None
@@ -351,7 +359,7 @@ class MarketMaker:
         # TODO: return a two-sided `Quote` for `option`.
         theo = self.price_option(option)
         theo = max(0.0, min(1.0, theo))
-        edge = 0.03
+        edge = self.RFQ_HALF_SPREAD # RFQ half-width
         bid_cents = math.floor(
             (theo - edge) * 100.0 + 1e-12
         )
@@ -388,12 +396,12 @@ class MarketMaker:
 
         bid_quantity = self._max_bid_quantity(
             bid_price,
-            hard_cap=3,
+            hard_cap=8,
         )
 
         offer_quantity = self._max_offer_quantity(
             offer_price,
-            hard_cap=3,
+            hard_cap=8,
         )
 
         # Quote requires strictly positive quantities.
@@ -441,7 +449,7 @@ class MarketMaker:
             capital_required = fok_order.quantity * fok_order.price
 
         # Model / estimation error buffer.
-        if edge < 0.02:
+        if edge < self.FOK_MIN_EDGE:
             return False
 
         # Full-order worst case.
