@@ -1,23 +1,261 @@
 import math
 import random
 from collections import defaultdict
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, replace
+from enum import StrEnum
+from typing import Any, Final
 
-from .akuna_binary_option_base import (
-    AJARAI_UNDERLYING_ID,
-    FED_FUNDS_RATE_UNDERLYING_ID,
-    THERIODIC_UNDERLYING_ID,
-    BinaryOption,
-    FokOrder,
-    MarketHistory,
-    MarketParameters,
-    OrderType,
-    Position,
-    Quote,
-    Underlying,
-)
+AJARAI_NAME: Final[str] = "AJR"
+AJARAI_UNDERLYING_ID: Final[int] = 2
+FED_FUNDS_RATE_NAME: Final[str] = "FED"
+FED_FUNDS_RATE_UNDERLYING_ID: Final[int] = 1
+RATE_STRIKE_GRID: Final[float] = 0.25
+THERIODIC_NAME: Final[str] = "THR"
+THERIODIC_UNDERLYING_ID: Final[int] = 3
 
+UNDERLYING_NAME_BY_ID: Final[dict[int, str]] = {
+    AJARAI_UNDERLYING_ID: AJARAI_NAME,
+    FED_FUNDS_RATE_UNDERLYING_ID: FED_FUNDS_RATE_NAME,
+    THERIODIC_UNDERLYING_ID: THERIODIC_NAME,
+}
+
+
+@dataclass(eq=True, frozen=True, unsafe_hash=True)
+class BinaryOption:
+    legs: "tuple[OptionLeg, ...]"
+    option_id: int
+    steps_until_expiry: int
+    strike: float
+
+    def __post_init__(self) -> None:
+        if self.steps_until_expiry < 0:
+            raise ValueError("Steps until expiry must be non-negative")
+
+        if not self.legs:
+            raise ValueError("Binary option must have at least one leg")
+
+        underlying_ids: list[int] = [leg.underlying_id for leg in self.legs]
+        if len(underlying_ids) != len(set(underlying_ids)):
+            raise ValueError("Binary option legs must reference distinct underlyings")
+
+        if any(leg.weight == 0 for leg in self.legs):
+            raise ValueError("Binary option leg weights must be non-zero")
+
+    def __str__(self) -> str:
+        terms: list[str] = []
+        for index, leg in enumerate(self.legs):
+            name: str = UNDERLYING_NAME_BY_ID.get(leg.underlying_id, str(leg.underlying_id))
+            magnitude: float = abs(leg.weight)
+            magnitude_str: str = "" if magnitude == 1 else f"{magnitude:.2f}*"
+            if index == 0:
+                sign: str = "-" if leg.weight < 0 else ""
+            else:
+                sign = " - " if leg.weight < 0 else " + "
+            terms.append(f"{sign}{magnitude_str}{name}")
+        observable_expression: str = "".join(terms)
+        return f"{self.option_id} ({self.steps_until_expiry}d {observable_expression} >= {self.strike:.2f})"
+
+    def advance_step(self) -> "BinaryOption":
+        if self.steps_until_expiry == 0:
+            return self
+
+        return replace(self, steps_until_expiry=self.steps_until_expiry - 1)
+
+    def contract_matches(self, other: "BinaryOption") -> bool:
+        return replace(other, option_id=self.option_id) == self
+
+    def expiry_valuation(self, value_by_underlying_id: dict[int, float]) -> float:
+        return 1.0 if self.observable_value(value_by_underlying_id) >= self.strike else 0.0
+
+    def observable_value(self, value_by_underlying_id: dict[int, float]) -> float:
+        return sum(leg.weight * value_by_underlying_id[leg.underlying_id] for leg in self.legs)
+
+
+@dataclass(frozen=True)
+class FokOrder:
+    counterparty_id: int
+    option_id: int
+    order_type: "OrderType"
+    price: float
+    quantity: int
+
+    def __post_init__(self) -> None:
+        if self.price < 0:
+            raise ValueError("FOK order price must be non-negative")
+
+        if self.quantity <= 0:
+            raise ValueError("FOK order quantity must be positive")
+
+
+@dataclass(frozen=True)
+class MarketHistory:
+    values_by_underlying_id: dict[int, tuple[float, ...]]
+
+    def __post_init__(self) -> None:
+        lengths: set[int] = {len(values) for values in self.values_by_underlying_id.values()}
+        if len(lengths) > 1:
+            raise ValueError("All underlyings must have the same number of historical days")
+
+        if lengths and next(iter(lengths)) <= 0:
+            raise ValueError("Market history must contain at least one day")
+
+    @property
+    def num_days(self) -> int:
+        if not self.values_by_underlying_id:
+            return 0
+        return len(next(iter(self.values_by_underlying_id.values())))
+
+
+@dataclass(frozen=True)
+class MarketParameters:
+    ajarai_drift: float
+    ajarai_idio_std_dev: float
+    ajarai_rate_beta: float
+    ajarai_sector_beta: float
+    rate_down_probability: float
+    rate_reversion_strength: float
+    rate_up_probability: float
+    sector_std_dev: float
+    theriodic_drift: float
+    theriodic_idio_std_dev: float
+    theriodic_rate_beta: float
+    theriodic_sector_beta: float
+
+    rate_step: float = 0.25
+    rate_target: float = 2.0
+
+    def __post_init__(self) -> None:
+        if self.rate_step <= 0:
+            raise ValueError("Rate step must be positive")
+
+        if self.rate_up_probability <= 0 or self.rate_down_probability <= 0:
+            raise ValueError("Rate up/down probabilities must both be positive")
+
+        if self.rate_up_probability + self.rate_down_probability > 1:
+            raise ValueError("Rate up/down probabilities must not sum to more than 1")
+
+        if self.rate_target < 0:
+            raise ValueError("Rate target must be non-negative")
+
+        if not (0 <= self.rate_reversion_strength <= 1):
+            raise ValueError("Rate reversion strength must be between 0 and 1")
+
+        if self.ajarai_idio_std_dev < 0 or self.theriodic_idio_std_dev < 0 or self.sector_std_dev < 0:
+            raise ValueError("Standard deviations must be non-negative")
+
+    def advance_company_value(
+        self,
+        current_value: float,
+        rate_change: float,
+        sector_shock: float,
+        *,
+        drift: float,
+        rate_beta: float,
+        sector_beta: float,
+        idio_std_dev: float,
+    ) -> float:
+        idiosyncratic_shock: float = random.gauss(mu=0.0, sigma=idio_std_dev)
+        log_return: float = drift + (rate_beta * rate_change) + (sector_beta * sector_shock) + idiosyncratic_shock
+        return round(current_value * math.exp(log_return), 2)
+
+    def advance_rate(self, rate_value: float) -> float:
+        up_probability, down_probability = self.tilted_rate_probabilities(rate_value)
+        draw: float = random.random()
+        if draw < up_probability:
+            return self.next_rate_value(rate_value, 1)
+
+        if draw < up_probability + down_probability:
+            return self.next_rate_value(rate_value, -1)
+
+        return rate_value
+
+    def advance_step(self, value_by_underlying_id: dict[int, float]) -> dict[int, float]:
+        current_rate_value: float = value_by_underlying_id[FED_FUNDS_RATE_UNDERLYING_ID]
+        rate_value: float = self.advance_rate(current_rate_value)
+        rate_change: float = round(rate_value - current_rate_value, 2)
+        sector_shock: float = random.gauss(mu=0.0, sigma=self.sector_std_dev)
+        return {
+            FED_FUNDS_RATE_UNDERLYING_ID: rate_value,
+            AJARAI_UNDERLYING_ID: self.advance_company_value(
+                value_by_underlying_id[AJARAI_UNDERLYING_ID],
+                rate_change,
+                sector_shock,
+                drift=self.ajarai_drift,
+                rate_beta=self.ajarai_rate_beta,
+                sector_beta=self.ajarai_sector_beta,
+                idio_std_dev=self.ajarai_idio_std_dev,
+            ),
+            THERIODIC_UNDERLYING_ID: self.advance_company_value(
+                value_by_underlying_id[THERIODIC_UNDERLYING_ID],
+                rate_change,
+                sector_shock,
+                drift=self.theriodic_drift,
+                rate_beta=self.theriodic_rate_beta,
+                sector_beta=self.theriodic_sector_beta,
+                idio_std_dev=self.theriodic_idio_std_dev,
+            ),
+        }
+
+    def next_rate_value(self, rate_value: float, num_grid_steps: int) -> float:
+        return max(round(rate_value + num_grid_steps * self.rate_step, 2), 0.0)
+
+    def tilted_rate_probabilities(self, rate_value: float) -> tuple[float, float]:
+        tilt: float = self.rate_reversion_strength * (self.rate_target - rate_value)
+        up_probability: float = min(max(self.rate_up_probability + tilt, 0.0), 1.0)
+        down_probability: float = min(max(self.rate_down_probability - tilt, 0.0), 1.0 - up_probability)
+        return up_probability, down_probability
+
+
+@dataclass(frozen=True)
+class OptionLeg:
+    underlying_id: int
+    weight: float
+
+
+class OrderType(StrEnum):
+    BUY = "buy"
+    SELL = "sell"
+
+
+class Position:
+    def __init__(self) -> None:
+        self.option_quantity_by_option_id: dict[int, int] = defaultdict(int)
+
+    def add_option_quantity(self, option_id: int, quantity: int) -> None:
+        self.option_quantity_by_option_id[option_id] += quantity
+
+
+@dataclass(frozen=True)
+class Quote:
+    bid_price: float
+    bid_quantity: int
+    offer_price: float
+    offer_quantity: int
+
+    def __post_init__(self) -> None:
+        if self.bid_quantity <= 0 or self.offer_quantity <= 0:
+            raise ValueError("Quote quantities must be positive")
+
+        if not (0.0 <= self.bid_price <= 1.0 and 0.0 <= self.offer_price <= 1.0):
+            raise ValueError("Quote prices must be between 0 and 1")
+
+        if self.bid_price >= self.offer_price:
+            raise ValueError("Quote bid price must be less than offer price")
+
+        if any(abs(round(price * 100) - price * 100) > 1e-6 for price in (self.bid_price, self.offer_price)):
+            raise ValueError("Quote prices must be in whole pennies (multiples of 0.01)")
+
+
+@dataclass(frozen=True)
+class Underlying:
+    name: str
+    underlying_id: int
+    value: float
+
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, Underlying):
+            return False
+        return self.underlying_id == other.underlying_id
 
 # ============================================================================
 # YOUR MARKET MAKER -- fill in the six stubbed methods below
@@ -55,6 +293,7 @@ class MarketMaker:
         # shallow balance
         self.initial_cash = cash_balance
         self.shadow_cash = cash_balance
+        self.min_cash_reserve = 0.5 * cash_balance
         # internal states
         self.estimator = MarketParameterEstimator()
         self.estimated_market_parameters = None
@@ -110,50 +349,77 @@ class MarketMaker:
 
     def quote(self, option: BinaryOption, counterparty_id: int) -> Quote:  # type: ignore[empty-body]
         # TODO: return a two-sided `Quote` for `option`.
-
         theo = self.price_option(option)
-
-        # Defensive clamp.
         theo = max(0.0, min(1.0, theo))
-
-        # Temporary conservative spread: +/- 3 cents.
         edge = 0.03
+        bid_cents = math.floor(
+            (theo - edge) * 100.0 + 1e-12
+        )
+        offer_cents = math.ceil(
+            (theo + edge) * 100.0 - 1e-12
+        )
+        bid_cents = max(
+            0,
+            min(99, bid_cents),
+        )
+        offer_cents = max(
+            1,
+            min(100, offer_cents),
+        )
 
-        # Work in integer pennies so Quote's penny constraint is satisfied.
-        bid_cents = math.floor((theo - edge) * 100.0 + 1e-12)
-        offer_cents = math.ceil((theo + edge) * 100.0 - 1e-12)
-
-        # Quote requires:
-        #
-        #   0 <= bid < offer <= 1
-        #
-        # i.e. cents:
-        #
-        #   0 <= bid_cents < offer_cents <= 100
-        bid_cents = max(0, min(99, bid_cents))
-        offer_cents = max(1, min(100, offer_cents))
-
-        # Defensive handling in case rounding collapses the spread.
         if bid_cents >= offer_cents:
-            center_cents = round(theo * 100.0)
-
-            if center_cents <= 0:
+            center = round(theo * 100)
+            if center <= 0:
                 bid_cents = 0
                 offer_cents = 1
-
-            elif center_cents >= 100:
+            elif center >= 100:
                 bid_cents = 99
                 offer_cents = 100
-
             else:
-                bid_cents = center_cents - 1
-                offer_cents = center_cents + 1
+                bid_cents = center - 1
+                offer_cents = center + 1
+
+        bid_price = bid_cents / 100.0
+        offer_price = offer_cents / 100.0
+
+        # ----------------------------------------------------------
+        # Risk-based sizing
+        # ----------------------------------------------------------
+
+        bid_quantity = self._max_bid_quantity(
+            bid_price,
+            hard_cap=3,
+        )
+
+        offer_quantity = self._max_offer_quantity(
+            offer_price,
+            hard_cap=3,
+        )
+
+        # Quote requires strictly positive quantities.
+        #
+        # If we have no capacity on one side, make that side
+        # maximally unattractive instead.
+        if bid_quantity <= 0:
+            bid_price = 0.0
+            bid_quantity = 1
+
+        if offer_quantity <= 0:
+            offer_price = 1.0
+            offer_quantity = 1
+
+        # Defensive guarantee.
+        if bid_price >= offer_price:
+            bid_price = 0.0
+            offer_price = 1.0
+            bid_quantity = 1
+            offer_quantity = 1
 
         return Quote(
-            bid_price=bid_cents / 100.0,
-            bid_quantity=3,
-            offer_price=offer_cents / 100.0,
-            offer_quantity=3,
+            bid_price=bid_price,
+            bid_quantity=bid_quantity,
+            offer_price=offer_price,
+            offer_quantity=offer_quantity,
         )
 
     def respond_to_fok(self, option: BinaryOption, fok_order: FokOrder) -> bool:  # type: ignore[empty-body]
@@ -178,22 +444,13 @@ class MarketMaker:
         if edge < 0.02:
             return False
 
-        expected_edge = edge * fok_order.quantity
-
-        # Don't tie up too much bankroll in one FOK.
-        if capital_required > 0.15 * self.shadow_cash:
+        # Full-order worst case.
+        if capital_required > self._available_risk_cash():
             return False
 
-        # Maintain a large solvency reserve.
-        if self.shadow_cash - capital_required < (0.40 * self.initial_cash):
+        # Don't allow one FOK to consume the entire remaining risk budget.
+        if capital_required > 0.25 * self._available_risk_cash():
             return False
-
-        # Require worthwhile edge relative to capital.
-        if capital_required > 0:
-            edge_on_capital = expected_edge / capital_required
-
-            if edge_on_capital < 0.10:
-                return False
 
         return True
 
@@ -201,7 +458,39 @@ class MarketMaker:
         # TODO: consume the burn-in history (e.g. estimate the market parameters).
         self.estimated_market_parameters = self.estimator.fit(market_history)
 
+    ## Accounting
+    def _available_risk_cash(self):
+        return max(
+            0.0,
+            self.shadow_cash - self.min_cash_reserve,
+        )
 
+    def _max_bid_quantity(self, bid_price, hard_cap=3):
+        # Bid fill means WE BUY.
+        capital_per_contract = bid_price
+        available = self._available_risk_cash()
+
+        if capital_per_contract <= 0:
+            return hard_cap
+
+        return min(
+            hard_cap,
+            int(available / capital_per_contract),
+        )
+
+
+    def _max_offer_quantity(self, offer_price, hard_cap=3):
+        # Offer fill means WE SELL.
+        capital_per_contract = 1.0 - offer_price
+        available = self._available_risk_cash()
+
+        if capital_per_contract <= 0:
+            return hard_cap
+
+        return min(
+            hard_cap,
+            int(available / capital_per_contract),
+        )
 # Helper classes
 
 
