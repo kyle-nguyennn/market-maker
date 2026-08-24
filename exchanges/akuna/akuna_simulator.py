@@ -6,7 +6,7 @@ from typing import Iterable
 
 import numpy as np
 
-from exchanges.akuna_multivariate_gaussian import (
+from exchanges.akuna.akuna_multivariate_gaussian import (
     AkunaUnderlyingGeneratorConfig,
     AkunaUnderlyingSeriesGenerator,
 )

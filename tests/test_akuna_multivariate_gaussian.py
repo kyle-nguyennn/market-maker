@@ -1,7 +1,7 @@
 import numpy as np
 
-from exchanges.akuna_multivariate_gaussian import AkunaUnderlyingSeriesGenerator, AkunaUnderlyingGeneratorConfig
-from exchanges.akuna_simulator import AkunaSimulatorAPI
+from exchanges.akuna.akuna_multivariate_gaussian import AkunaUnderlyingSeriesGenerator, AkunaUnderlyingGeneratorConfig
+from exchanges.akuna.akuna_simulator import AkunaSimulatorAPI
 
 
 def test_generated_series_has_three_correlated_underlyings():

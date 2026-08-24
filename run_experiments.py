@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable
 
-from exchanges.akuna_simulator import AkunaSimulatorAPI
+from exchanges.akuna.akuna_simulator import AkunaSimulatorAPI
 from market_handler.market_adapter import MarketState
 from experiments.runner import ExperimentConfig, parameter_sweep
 from quoter.baseline_models import FixedQuoteStrategy, MidpointMMQuoter, InventoryAwareMMQuoter, VolatilityAwareMMQuoter
