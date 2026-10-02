@@ -7,7 +7,7 @@ from .types import VenueOrderRequest, VenueOrderResult
 
 
 class HyperliquidVenueClient:
-    """Thin wrapper around the official Hyperliquid SDK.
+    """Thin wrapper around the official Hyperliquid SDK.\n\n    This client accepts only venue-formatted request objects. Internal Decimal\n    OrderIntent objects must be converted by HyperliquidMarketAdapter first.
 
     This file intentionally starts read-only. Signed actions are added only
     after the team wallet has been funded and the separate API wallet has
