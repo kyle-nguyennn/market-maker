@@ -1,0 +1,3 @@
+# Perpetual Alpha / Hyperliquid venue dependencies
+# Keep venue-specific dependencies out of the core framework.
+hyperliquid-python-sdk==0.24.0
