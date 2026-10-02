@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum
 
+from model.order import OrderIntent, Side
+
 
 class OrderState(str, Enum):
     PENDING_NEW = "PENDING_NEW"
@@ -15,23 +17,12 @@ class OrderState(str, Enum):
     REJECTED = "REJECTED"
 
 
-@dataclass(frozen=True)
-class OrderIntent:
-    instrument: str
-    side: str
-    price: Decimal
-    size: Decimal
-    post_only: bool = True
-    reduce_only: bool = False
-    client_order_id: str | None = None
-
-
 @dataclass
 class LiveOrder:
     client_order_id: str
     exchange_order_id: int | None
     instrument: str
-    side: str
+    side: Side
     price: Decimal
     original_size: Decimal
     remaining_size: Decimal
@@ -39,13 +30,10 @@ class LiveOrder:
 
 
 class OrderManager:
-    """Reconcile desired intents against live/pending orders.
+    """Reconcile venue-independent desired intents against live orders.
 
-    Initial Perpetual Alpha policy:
-    - one working order per side/instrument
-    - prefer post-only (ALO)
-    - suppress needless cancel/replace churn
-    - reconcile partial fills and rejects explicitly
+    All numeric fields remain Decimal here. Quantization and serialization are
+    the responsibility of the selected market adapter at the final boundary.
     """
 
     def __init__(self) -> None:
