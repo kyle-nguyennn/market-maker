@@ -9,10 +9,11 @@ from exchanges.hyperliquid.types import (
     OrderSide,
     TimeInForce,
     VenueOrderRequest,
+    VenueOrderResult,
 )
 from market_handler.market_adapter import BaseMarketAdapter
 from model.market import BookLevel, MarketState
-from model.order import OrderIntent, Side
+from model.order import ExecutionReport, ExecutionStatus, OrderIntent, Side
 
 
 def _strip_decimal(value: Decimal) -> str:
@@ -129,4 +130,34 @@ class HyperliquidMarketAdapter(BaseMarketAdapter):
             tif=tif,
             reduce_only=intent.reduce_only,
             client_order_id=intent.client_order_id,
+        )
+
+    def to_internal_execution_report(
+        self,
+        venue_result: VenueOrderResult,
+    ) -> ExecutionReport:
+        status_map = {
+            "resting": ExecutionStatus.RESTING,
+            "filled": ExecutionStatus.FILLED,
+            "error": ExecutionStatus.REJECTED,
+        }
+        try:
+            status = status_map[venue_result.status.lower()]
+        except KeyError as exc:
+            raise ValueError(f"unknown Hyperliquid order status: {venue_result.status}") from exc
+
+        return ExecutionReport(
+            status=status,
+            exchange_order_id=venue_result.order_id,
+            filled_size=(
+                Decimal(venue_result.filled_size)
+                if venue_result.filled_size is not None
+                else None
+            ),
+            average_price=(
+                Decimal(venue_result.average_price)
+                if venue_result.average_price is not None
+                else None
+            ),
+            error=venue_result.error,
         )
