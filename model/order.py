@@ -10,6 +10,12 @@ class Side(str, Enum):
     ASK = "ASK"
 
 
+class ExecutionStatus(str, Enum):
+    RESTING = "RESTING"
+    FILLED = "FILLED"
+    REJECTED = "REJECTED"
+
+
 @dataclass(frozen=True)
 class Quote:
     """Desired strategy quote in venue-independent units."""
@@ -23,8 +29,8 @@ class Quote:
 class OrderIntent:
     """Venue-independent execution intent.
 
-    The adapter converts Decimal price/size and generic side semantics into the
-    exact wire/SDK representation required by the target exchange.
+    Numeric fields remain Decimal until a market adapter converts them to the
+    target venue's exact wire/SDK representation.
     """
 
     instrument: str
@@ -34,3 +40,14 @@ class OrderIntent:
     post_only: bool = True
     reduce_only: bool = False
     client_order_id: str | None = None
+
+
+@dataclass(frozen=True)
+class ExecutionReport:
+    """Venue-independent result of one order operation."""
+
+    status: ExecutionStatus
+    exchange_order_id: int | None = None
+    filled_size: Decimal | None = None
+    average_price: Decimal | None = None
+    error: str | None = None
