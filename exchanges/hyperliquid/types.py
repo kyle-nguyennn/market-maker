@@ -17,11 +17,24 @@ class TimeInForce(str, Enum):
 
 
 @dataclass(frozen=True)
+class HyperliquidMarketSpec:
+    """Exchange precision metadata read from Hyperliquid meta."""
+
+    sz_decimals: int
+
+
+@dataclass(frozen=True)
 class VenueOrderRequest:
+    """Hyperliquid-facing order representation.
+
+    Strings intentionally mirror the decimal-string representation expected at
+    the exchange boundary. Internal strategy/execution objects remain Decimal.
+    """
+
     instrument: str
     side: OrderSide
-    size: Decimal
-    price: Decimal
+    size: str
+    price: str
     tif: TimeInForce = TimeInForce.ALO
     reduce_only: bool = False
     client_order_id: str | None = None
