@@ -69,6 +69,16 @@ objects to integer cents/ticks only at its venue boundary.
 - Never commit or log private keys
 - Inspect per-operation order results even when the request status is `ok`
 
+## Hyperliquid-specific dependencies
+
+Install only when building/running the Hyperliquid venue path:
+
+```bash
+pip install -r requirements/hyperliquid.txt
+```
+
+The file currently pins `hyperliquid-python-sdk==0.24.0`, matching the competition guide. Core model/strategy code does not depend on the SDK.
+
 ## Current scope
 
 The scaffold is intentionally **read-only** before competition collateral is
