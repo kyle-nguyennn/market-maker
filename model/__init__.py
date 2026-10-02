@@ -5,6 +5,20 @@ Venue adapters own conversion to and from exchange-specific representations.
 """
 
 from .market import BookLevel, MarketState
-from .order import OrderIntent, Quote, Side
+from .order import (
+    ExecutionReport,
+    ExecutionStatus,
+    OrderIntent,
+    Quote,
+    Side,
+)
 
-__all__ = ["BookLevel", "MarketState", "OrderIntent", "Quote", "Side"]
+__all__ = [
+    "BookLevel",
+    "ExecutionReport",
+    "ExecutionStatus",
+    "MarketState",
+    "OrderIntent",
+    "Quote",
+    "Side",
+]
