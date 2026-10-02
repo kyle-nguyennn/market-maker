@@ -1,8 +1,8 @@
 from decimal import Decimal
 
-from exchanges.hyperliquid.types import HyperliquidMarketSpec
+from exchanges.hyperliquid.types import HyperliquidMarketSpec, VenueOrderResult
 from market_handler.hyperliquid_adapter import HyperliquidMarketAdapter
-from model.order import OrderIntent, Side
+from model.order import ExecutionStatus, OrderIntent, Side
 
 
 def test_hyperliquid_snapshot_normalizes_to_internal_decimal_model() -> None:
@@ -37,6 +37,42 @@ def test_hyperliquid_outbound_conversion_is_adapter_owned() -> None:
     )
 
     assert venue_order.instrument == "par:BTC"
+    assert venue_order.price == "12345"
+    assert venue_order.size == "0.1234"
     assert isinstance(venue_order.price, str)
     assert isinstance(venue_order.size, str)
-    assert venue_order.size == "0.1234"
+
+
+def test_hyperliquid_ask_rounds_away_from_crossing() -> None:
+    adapter = HyperliquidMarketAdapter()
+    intent = OrderIntent(
+        instrument="BTC",
+        side=Side.ASK,
+        price=Decimal("12345.0001"),
+        size=Decimal("1"),
+    )
+
+    venue_order = adapter.to_venue_order(
+        intent,
+        HyperliquidMarketSpec(sz_decimals=4),
+    )
+
+    assert venue_order.price == "12346"
+
+
+def test_hyperliquid_result_normalizes_back_to_decimal() -> None:
+    adapter = HyperliquidMarketAdapter()
+
+    report = adapter.to_internal_execution_report(
+        VenueOrderResult(
+            status="filled",
+            order_id=42,
+            filled_size="0.125",
+            average_price="101.25",
+        )
+    )
+
+    assert report.status is ExecutionStatus.FILLED
+    assert report.exchange_order_id == 42
+    assert report.filled_size == Decimal("0.125")
+    assert report.average_price == Decimal("101.25")
