@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal
 from enum import Enum
 
 
@@ -25,11 +24,7 @@ class HyperliquidMarketSpec:
 
 @dataclass(frozen=True)
 class VenueOrderRequest:
-    """Hyperliquid-facing order representation.
-
-    Strings intentionally mirror the decimal-string representation expected at
-    the exchange boundary. Internal strategy/execution objects remain Decimal.
-    """
+    """Hyperliquid-facing order representation."""
 
     instrument: str
     side: OrderSide
@@ -42,10 +37,10 @@ class VenueOrderRequest:
 
 @dataclass(frozen=True)
 class VenueOrderResult:
-    """Normalized result for one operation inside a Hyperliquid response."""
+    """Hyperliquid-facing result before adapter normalization."""
 
     status: str
     order_id: int | None = None
-    filled_size: Decimal | None = None
-    average_price: Decimal | None = None
+    filled_size: str | None = None
+    average_price: str | None = None
     error: str | None = None
