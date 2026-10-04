@@ -12,7 +12,9 @@ class Side(str, Enum):
 
 class ExecutionStatus(str, Enum):
     RESTING = "RESTING"
+    PARTIALLY_FILLED = "PARTIALLY_FILLED"
     FILLED = "FILLED"
+    NOOP = "NOOP"
     REJECTED = "REJECTED"
 
 
