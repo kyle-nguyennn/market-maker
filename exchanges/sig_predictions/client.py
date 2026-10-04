@@ -170,6 +170,9 @@ class SigPredictionsVenueClient:
             query={"tournamentId": tournament_id},
         )
 
+    def get_tournament(self, slug: str) -> dict[str, Any]:
+        return self._request("GET", f"/tournaments/{slug}")
+
     def get_exchange_price(
         self,
         exchange_id: str,
@@ -188,7 +191,6 @@ class SigPredictionsVenueClient:
         *,
         tournament_id: str | None = None,
         depth: int = 200,
-        timestamp_ms: int = 0,
     ) -> SigOrderBookSnapshot:
         payload = self._request(
             "GET",
@@ -204,6 +206,12 @@ class SigPredictionsVenueClient:
             if as_of_raw is not None
             else None
         )
+        if as_of is not None:
+            at = as_of.at[:-1] + "+00:00" if as_of.at.endswith("Z") else as_of.at
+            timestamp_ms = int(datetime.fromisoformat(at).timestamp() * 1000)
+        else:
+            timestamp_ms = int(time.time() * 1000)
+
         return SigOrderBookSnapshot(
             exchange_id=str(payload["exchangeId"]),
             market_id=str(payload["marketId"]),
