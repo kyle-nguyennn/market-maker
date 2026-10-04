@@ -15,7 +15,9 @@ def main() -> None:
     print(
         "SIG Predictions scaffold ready:",
         f"api={client.config.api_version}",
-        "wire_client=pending-public-api-reference",
+        f"base={client.config.api_base_url()}",
+        "rest=ready",
+        "realtime_socket=pending",
     )
 
 
