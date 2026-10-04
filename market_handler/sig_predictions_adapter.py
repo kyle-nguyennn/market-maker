@@ -117,6 +117,8 @@ class SigPredictionsMarketAdapter(BaseMarketAdapter):
         exchange_id = self._parse_exchange_id(intent.instrument)
         if exchange_id != market_spec.exchange_id:
             raise ValueError("order intent instrument does not match SIG exchange")
+        if intent.post_only:
+            raise ValueError("SIG /api/v1 has no post-only order guarantee")
         if intent.reduce_only:
             raise ValueError("reduce_only has no SIG /api/v1 order field")
         if not intent.client_order_id:
