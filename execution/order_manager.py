@@ -20,7 +20,7 @@ class OrderState(str, Enum):
 @dataclass
 class LiveOrder:
     client_order_id: str
-    exchange_order_id: int | None
+    exchange_order_id: str | int | None
     instrument: str
     side: Side
     price: Decimal
