@@ -10,10 +10,13 @@ class SigPredictionsVenueClient:
     """Thin boundary around the official SIG Predictions Cup v1 API.
 
     The public Product Guide and Changelog document the API permissions,
-    realtime channel naming, and cancellation retry semantics. The linked
-    API Reference is authoritative for exact HTTP paths, auth headers, and
-    request/response field names. Those wire details are intentionally not
-    guessed here.
+    realtime channel naming, and cancellation retry semantics. The canonical
+    API Reference is:
+    https://sig.thesuper.market/api/v1/docs#description/introduction
+
+    That reference is authoritative for exact HTTP paths, auth headers, and
+    request/response field names. Those wire details must not be inferred from
+    WebUI traffic.
     """
 
     def __init__(self, config: SigPredictionsVenueConfig | None = None) -> None:
@@ -39,8 +42,8 @@ class SigPredictionsVenueClient:
     @staticmethod
     def _wire_contract_required(operation: str) -> NotImplementedError:
         return NotImplementedError(
-            f"{operation} requires the exact route/auth/payload from the linked "
-            "SIG public API Reference; do not infer it from WebUI traffic"
+            f"{operation} requires the exact route/auth/payload from the official "
+            "SIG v1 API Reference; do not infer it from WebUI traffic"
         )
 
     def list_markets(self, **_: Any) -> Any:
