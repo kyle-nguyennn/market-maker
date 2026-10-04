@@ -1,27 +1,28 @@
 """SIG Predictions Cup venue integration."""
 
-from .client import SigPredictionsVenueClient
+from .client import SigApiError, SigPredictionsVenueClient
 from .config import SigPredictionsVenueConfig
 from .types import (
-    Outcome,
+    OrderAction,
+    OutcomeSide,
     SigBookLevel,
+    SigBookVersion,
     SigMarketSpec,
     SigOrderBookSnapshot,
     SigOrderRequest,
     SigOrderResult,
-    VenueOrderType,
-    VenueSide,
 )
 
 __all__ = [
-    "Outcome",
+    "OrderAction",
+    "OutcomeSide",
+    "SigApiError",
     "SigBookLevel",
+    "SigBookVersion",
     "SigMarketSpec",
     "SigOrderBookSnapshot",
     "SigOrderRequest",
     "SigOrderResult",
     "SigPredictionsVenueClient",
     "SigPredictionsVenueConfig",
-    "VenueOrderType",
-    "VenueSide",
 ]
