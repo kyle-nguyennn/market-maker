@@ -47,7 +47,7 @@ class ExecutionReport:
     """Venue-independent result of one order operation."""
 
     status: ExecutionStatus
-    exchange_order_id: int | None = None
+    exchange_order_id: str | int | None = None
     filled_size: Decimal | None = None
     average_price: Decimal | None = None
     error: str | None = None
