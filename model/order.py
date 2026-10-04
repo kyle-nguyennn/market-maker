@@ -14,6 +14,7 @@ class ExecutionStatus(str, Enum):
     RESTING = "RESTING"
     PARTIALLY_FILLED = "PARTIALLY_FILLED"
     FILLED = "FILLED"
+    CANCELLED = "CANCELLED"
     NOOP = "NOOP"
     REJECTED = "REJECTED"
 
