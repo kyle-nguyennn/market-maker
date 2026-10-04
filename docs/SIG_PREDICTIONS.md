@@ -1,97 +1,190 @@
-# SIG Predictions Cup adapter scaffold
+# SIG Predictions Cup integration
 
-## Scope
+## Source of truth
 
-This scaffold reuses the shared market-maker core and keeps SIG-specific
-semantics at the exchange boundary. Internal prices, quantities, positions,
-and execution values stay Decimal.
+The adapter is based on the official OpenAPI 3.1 document exported from:
 
-The current competition is the 2026 Midterm Elections competition. The public
-Guide states that each participant starts with 100,000 SUSQies and the
-competition runs from October 1, 2026 at noon Eastern through November 4,
-2026 at noon Eastern.
+- https://sig.thesuper.market/api/v1/docs#description/introduction
 
-## Public sources used
+Production server declared by that document:
 
-- Product Guide: https://sig.thesuper.market/docs
-- API Reference: https://sig.thesuper.market/api/v1/docs#description/introduction
-- Markets & Trading: https://sig.thesuper.market/docs/markets-and-trading
-- Changelog: https://sig.thesuper.market/docs/changelog
-- Official Rules: https://predictionscup.com/rules/
+    https://www.thesuper.market/api/v1
 
-The API Reference is authoritative for exact endpoint paths, authentication
-headers, request fields, response fields, and rate limits.
+Authentication:
 
-Do not reverse engineer the website endpoints. The October 1 changelog says
-automated clients must use the v1 API with an API key.
+    Authorization: Bearer <key>
 
-## Market model
+The API also accepts `X-API-Key: <key>`. Participant bots need `read` for
+market/account data and `trade` for order placement/cancellation. Website
+`/api/*` routes outside `/api/v1` are not a supported automation interface.
 
-A market has YES and NO outcomes. Prices are in [0, 1], and a winning share
-pays 1 SUSQie. The Guide also documents the complement relationship:
-selling YES at p is economically equivalent to buying NO at 1-p.
+## Model mapping
 
-The adapter intentionally preserves explicit outcome plus BUY/SELL intent
-instead of rewriting complements. This keeps inventory, attribution, and
-strategy decisions auditable.
+The important API distinction is:
 
-Internal instrument format:
+- **Market** = container.
+- **Exchange** = atomic tradable contract.
+- Every order, trade, position, and order book references an `exchangeId`.
+- Exchange order books and trade prices are YES-normalized.
 
-    SIG_PREDICTION:<market_id>:<YES|NO>
+The internal instrument is therefore:
 
-Example:
+    SIG_EXCHANGE:<exchange_id>
 
-    SIG_PREDICTION:123:YES
+The shared strategy model remains YES-normalized:
 
-## Order book and realtime state
+- internal BID at `p` -> API `buy yes` at `p`
+- internal ASK at `p` -> API `buy no` at `1 - p`
 
-REST order books have an asOf book version. Realtime tournament-market
-messages use:
+Using BUY NO for the ask is the clean quoting representation recommended by
+the API's market-making workflow. The engine can canonicalize certain SELL
+orders into complement BUY orders, but the adapter does not depend on that.
+
+## Order contract
+
+Single order:
+
+    POST /orders
+
+Required body fields:
+
+- `idempotencyKey`
+- `exchangeId` (numeric string)
+- `side`: `yes` or `no`
+- `action`: `buy` or `sell`
+- `quantity`: positive integer, max 2,147,483,647
+
+Optional:
+
+- `price`
+- `expirationDate`
+- `tournamentId`
+
+Fresh limit prices are on a 0.005 tick and must lie from 0.005 through 0.995.
+Omitting `price` is a market order. `price=1` for BUY and `price=0` for
+SELL also encode market orders.
+
+The API has no post-only request field. The SIG adapter therefore refuses an
+internal `post_only=True` intent instead of silently weakening the guarantee.
+For live quoting, explicitly opt out of post-only only after the execution
+layer has a deliberate crossing policy.
+
+For two-sided quote publication prefer:
+
+    POST /orders/multi-leg
+
+It supports 1-10 legs atomically. For bulk non-atomic entry,
+`POST /orders/batch` supports 1-50 orders.
+
+## Market data
+
+Primary reads:
+
+- `GET /markets`
+- `GET /markets/{id}`
+- `GET /exchanges/{id}/price`
+- `GET /exchanges/{id}/orderbook?depth=200&tournamentId=...`
+
+The exchange order book returns YES-normalized `bids` and `asks` and an
+`asOf = {sequence, at}` engine version where available.
+
+For a competition tournament, resolve its slug with
+`GET /tournaments/{slug}` and carry the returned UUID as `tournamentId`
+through market discovery, exchange reads, and order placement.
+
+## Realtime
+
+Mint credentials with:
+
+    POST /realtime/token
+
+The response contains `token`, `expiresAt`, `supabaseUrl`, `anonKey`,
+and `channels.user`. Tokens last 3 hours.
+
+For a few tournament markets subscribe to:
 
     tournament:{tournament_id}:market:{market_id}
 
-The changelog says those updates arrive in one-second batches. Realtime trade
-IDs match the REST trade tape.
+For many markets use the single aggregate channel:
 
-When the live client is wired, reconciliation should:
+    tournament:{tournament_id}:markets
 
-1. snapshot REST book plus asOf;
-2. subscribe to the market-specific realtime channel;
-3. apply only updates consistent with the observed version sequence;
-4. resnapshot on reconnect, version discontinuity, or ambiguous local state.
+Market/account changes are coalesced into one-second batches. Realtime is
+best-effort, not authoritative. Maintain topic revisions, apply versioned
+books by `asOf`, and resynchronize from REST on initial subscription,
+reconnect, token refresh, socket error, revision gap, `resyncRequired`, a
+trade with null sequence, and periodically (the spec suggests every 1-2 min).
 
-## Execution safety
+## Re-quote and cancellation
 
-The Guide allows both market and limit orders. Limit orders can rest until
-filled or cancelled. Users can keep orders on both outcomes, but own orders do
-not self-trade.
+For a market-making loop, cancel with:
 
-Cancellation has an explicit retry rule: HTTP 503 means the trading engine is
-temporarily unavailable and retry is safe. Cancel-all should be retried until
-the server returns 200. Local state must not be marked flat only because a
-cancel request was sent.
+    POST /orders/cancel-all
 
-The Official Rules define a competition trade as received only after the
-platform validly receives and explicitly confirms it. Treat server
-confirmation as authoritative for API-submitted orders.
+Scope by `exchangeId` whenever possible. Only post replacement quotes after
+cancel-all returns HTTP 200, which means no targeted order remains resting.
 
-## Wire-client status
+A `503 SERVICE_UNAVAILABLE` can represent a partially completed cancel-all;
+`error.details.cancelled` reports confirmed progress. Retry the same request
+with exponential backoff until HTTP 200.
 
-The semantic adapter is implemented. Exact REST paths, auth-header names,
-payload keys, response keys, and rate limits must be copied from the canonical
-API Reference above; they are intentionally not guessed from WebUI traffic or
-from the API documentation URL structure.
+## Idempotency and retry policy
 
-Before enabling live order submission, copy those values verbatim into
-exchanges/sig_predictions/client.py and add contract tests using the examples
-and schemas in the API Reference.
+`POST /orders`, `POST /orders/batch`, and `POST /orders/multi-leg` require
+client-supplied idempotency keys. Reuse the same key only for an identical
+logical request.
 
-## Recommended implementation order
+Important retry cases:
 
-1. Wire read-only market discovery and order-book endpoints from API Reference.
-2. Add API-key auth exactly as documented.
-3. Add realtime subscription and REST/realtime reconciliation.
-4. Wire positions and open orders.
-5. Wire limit-order placement with one tiny canary order.
-6. Wire single-order cancel and cancel-all with documented 503 retry behavior.
-7. Only then connect the shared quoter/order manager to live execution.
+- 429 `RATE_LIMITED`: honor `Retry-After`; retry same idempotency key.
+- 409 `REQUEST_IN_FLIGHT`: wait for the execution lease, then retry identical
+  request with the same key.
+- 502 `ORDER_STATUS_UNKNOWN`: the order may already exist; reconcile
+  positions/order state or retry the identical request with the same key.
+- 503 `TX_CONFLICT` / `SERVICE_UNAVAILABLE`: exponential backoff with
+  jitter, preserving the idempotency key.
+- Other 4xx responses are not automatically retryable.
+
+Standard participant accounts share a per-account budget of 100 reads and
+30 writes per minute. Open Realtime connections do not consume that budget.
+
+## Portfolio reconciliation
+
+Default-scope reads include:
+
+- `GET /portfolio/positions`
+- `GET /portfolio/pnl`
+- `GET /portfolio/fills`
+
+For an explicit non-default competition tournament, use the tournament-scoped
+portfolio paths, e.g.:
+
+    GET /tournaments/{slug}/portfolio/positions
+
+This matters because default portfolio endpoints do not accept an arbitrary
+`tournamentId` for positions/P&L.
+
+## Implementation status
+
+Implemented:
+
+1. authenticated v1 REST transport;
+2. market discovery and exchange price/book reads;
+3. exact single-order payload and response normalization;
+4. batch and atomic multi-leg placement;
+5. order listing/detail/fills;
+6. single cancel and scoped cancel-all;
+7. default and tournament portfolio positions/P&L;
+8. realtime token minting and channel naming;
+9. Decimal-to-wire conversion, tick/quantity validation, and execution result
+   normalization.
+
+Next runtime layer:
+
+1. Supabase Realtime connection/reconnect manager;
+2. `revision` / `previousRevision` gap detector;
+3. per-exchange `asOf` book version reconciliation;
+4. periodic REST resync scheduler;
+5. quote-cycle orchestration: cancel-all -> confirmed 200 -> atomic multi-leg
+   repost;
+6. strategy/risk integration using tournament balance and positions.
