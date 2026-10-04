@@ -10,6 +10,7 @@ class SigPredictionsVenueConfig:
 
     site_url: str = "https://sig.thesuper.market"
     guide_url: str = "https://sig.thesuper.market/docs"
+    api_reference_url: str = "https://sig.thesuper.market/api/v1/docs#description/introduction"
     markets_guide_url: str = "https://sig.thesuper.market/docs/markets-and-trading"
     changelog_url: str = "https://sig.thesuper.market/docs/changelog"
     rules_url: str = "https://predictionscup.com/rules/"
