@@ -161,10 +161,21 @@ class SigPredictionsMarketAdapter(BaseMarketAdapter):
             status = ExecutionStatus.RESTING
         elif venue_result.open:
             status = ExecutionStatus.PARTIALLY_FILLED
-        elif venue_result.terminal_reason_code is not None and filled == 0:
-            status = ExecutionStatus.CANCELLED
         elif venue_result.terminal_reason_code is not None:
-            status = ExecutionStatus.PARTIALLY_FILLED
+            status = (
+                ExecutionStatus.CANCELLED
+                if filled == 0
+                else ExecutionStatus.PARTIALLY_FILLED
+            )
+        elif (
+            venue_result.quantity is not None
+            and filled < Decimal(venue_result.quantity)
+        ):
+            status = (
+                ExecutionStatus.CANCELLED
+                if filled == 0
+                else ExecutionStatus.PARTIALLY_FILLED
+            )
         else:
             status = ExecutionStatus.FILLED
 
