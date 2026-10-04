@@ -1,0 +1,29 @@
+venue: sig_predictions
+api:
+  version: v1
+  api_key_env: SIG_PREDICTIONS_API_KEY
+  api_base_url_env: SIG_PREDICTIONS_API_BASE_URL
+  realtime_url_env: SIG_PREDICTIONS_REALTIME_URL
+  tournament_id_env: SIG_PREDICTIONS_TOURNAMENT_ID
+
+competition:
+  name: Midterm Elections
+  starts_at: "2026-10-01T12:00:00-04:00"
+  ends_at: "2026-11-04T12:00:00-05:00"
+  starting_balance_susqies: 100000
+
+market:
+  outcomes: [YES, NO]
+  min_price: "0"
+  max_price: "1"
+  canonical_instrument: "SIG_PREDICTION:<market_id>:<YES|NO>"
+
+realtime:
+  channel: "tournament:{tournament_id}:market:{market_id}"
+  documented_batch_seconds: 1
+
+execution:
+  preserve_explicit_outcome_and_side: true
+  retry_cancel_on_http_503: true
+  require_server_confirmation_before_local_cancel: true
+  wire_schema_source: public_api_reference
