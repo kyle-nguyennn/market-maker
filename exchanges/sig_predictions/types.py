@@ -20,6 +20,12 @@ class VenueOrderType(str, Enum):
 
 
 @dataclass(frozen=True)
+class SigMarketSpec:
+    market_id: str
+    outcome: Outcome
+
+
+@dataclass(frozen=True)
 class SigBookLevel:
     price: str
     size: str
