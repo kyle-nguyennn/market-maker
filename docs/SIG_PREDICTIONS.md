@@ -14,12 +14,13 @@ competition runs from October 1, 2026 at noon Eastern through November 4,
 ## Public sources used
 
 - Product Guide: https://sig.thesuper.market/docs
+- API Reference: https://sig.thesuper.market/api/v1/docs#description/introduction
 - Markets & Trading: https://sig.thesuper.market/docs/markets-and-trading
 - Changelog: https://sig.thesuper.market/docs/changelog
 - Official Rules: https://predictionscup.com/rules/
-- API Reference: linked from the Product Guide and is authoritative for exact
-  endpoint paths, authentication headers, request fields, response fields, and
-  rate limits.
+
+The API Reference is authoritative for exact endpoint paths, authentication
+headers, request fields, response fields, and rate limits.
 
 Do not reverse engineer the website endpoints. The October 1 changelog says
 automated clients must use the v1 API with an API key.
@@ -77,13 +78,13 @@ confirmation as authoritative for API-submitted orders.
 ## Wire-client status
 
 The semantic adapter is implemented. Exact REST paths, auth-header names,
-payload keys, response keys, and rate limits are intentionally not guessed in
-this scaffold because they belong to the linked public API Reference rather
-than the Product Guide.
+payload keys, response keys, and rate limits must be copied from the canonical
+API Reference above; they are intentionally not guessed from WebUI traffic or
+from the API documentation URL structure.
 
 Before enabling live order submission, copy those values verbatim into
-exchanges/sig_predictions/client.py and add contract tests using captured
-public-API examples.
+exchanges/sig_predictions/client.py and add contract tests using the examples
+and schemas in the API Reference.
 
 ## Recommended implementation order
 
