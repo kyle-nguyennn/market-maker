@@ -149,7 +149,7 @@ def test_submit_timeout_quarantines_and_does_not_retry():
     assert outcome.reason == "submit_status_unknown"
     assert not manager.ready
     assert manager.live_orders[action.intent.client_order_id].state is OrderState.UNKNOWN
-    assert manager.reconcile([action.intent]) == [] if action.intent.client_order_id is None else not manager.ready
+    assert manager.reconcile([OrderIntent("BTC", Side.BID, D("99"), D("0.2"))]) == []
     assert len(client.placements) == 1
 
 
@@ -199,4 +199,16 @@ def test_unrecognized_action_cannot_bypass_gateway():
     manager, risk, client, gateway = setup()
     with pytest.raises(TypeError):
         gateway.dispatch(object(), context)
+    assert not client.placements
+
+
+def test_gateway_uses_manager_exposure_not_callers_empty_exposure_list():
+    manager, risk, client, gateway = setup(live=True, authorized=True)
+    ask = OrderIntent("BTC", Side.ASK, D("102"), D("2.1"))
+    assert manager.reconcile([ask])  # A pending ask is still fillable.
+    bids = manager.reconcile([ask, OrderIntent("BTC", Side.BID, D("99"), D("0.2"))])
+    assert len(bids) == 1
+    # Caller omitted exposure, but gateway must reconstruct it from manager.
+    result = gateway.dispatch(bids[0], context)
+    assert result.reason == "max_abs_position"
     assert not client.placements
