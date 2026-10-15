@@ -60,7 +60,7 @@ def _operation_status(response: Any, operation: str) -> Any:
 
 
 class HyperliquidVenueClient:
-    """SDK-facing Hyperliquid testnet client (no domain Decimal types).
+    """SDK-facing Hyperliquid venue client for the selected DEX profile.
 
     All account reads use the team wallet. The approved agent's private key is
     loaded by the caller from the environment; it is never stored in config.
@@ -68,11 +68,8 @@ class HyperliquidVenueClient:
     """
 
     def __init__(self, config: HyperliquidVenueConfig | None = None) -> None:
-        self.config = config or HyperliquidVenueConfig()
-        if self.config.api_url.rstrip("/") != "https://api.hyperliquid-testnet.xyz":
-            raise ValueError("Perpetual Alpha only supports Hyperliquid testnet")
-        if self.config.dex != "par":
-            raise ValueError("Perpetual Alpha must use the par dex")
+        # The same validated profile governs REST, WebSocket, symbols and signing.
+        self.config = config or HyperliquidVenueConfig.from_environment()
         self._info: Any | None = None
         self._ws_info: Any | None = None
         self._exchange: Any | None = None
@@ -141,7 +138,7 @@ class HyperliquidVenueClient:
     def query_account_state(self, team_wallet: str) -> dict[str, Any]:
         wallet = _team_address(team_wallet)
         return {
-            "spot": self.query_spot_balance(wallet),  # USDPR unified collateral
+            "spot": self.query_spot_balance(wallet),  # USDPR on par, USDP on pa
             "perps": self.query_positions(wallet),
             "open_orders": self.query_open_orders(wallet),
         }
@@ -155,6 +152,13 @@ class HyperliquidVenueClient:
 
     def connect_exchange(self, *, team_wallet: str, api_private_key: str) -> None:
         """Configure the already-approved agent signer; does NOT approve a key."""
+        # Selecting pa or supplying a secret never silently enables live trading.
+        if self.config.dex == "pa" and not self.config.allow_live_trading:
+            raise PermissionError(
+                "pa trading is disabled. Verify network, live account funding, "
+                "API authorization and risk limits, then explicitly set "
+                "PERPETUAL_ALPHA_PA_ALLOW_TRADING=true."
+            )
         wallet = _team_address(team_wallet)
         if not api_private_key:
             raise ValueError("API wallet private key is required")

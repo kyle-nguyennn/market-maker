@@ -14,6 +14,12 @@ from exchanges.hyperliquid.client import HyperliquidVenueClient, _sdk_float
 from exchanges.hyperliquid.config import HyperliquidVenueConfig
 from exchanges.hyperliquid.types import OrderSide, TimeInForce, VenueOrderRequest
 
+@pytest.fixture(autouse=True)
+def _default_practice_profile(monkeypatch):
+    # These are par contract tests even if the developer's .env selects pa.
+    monkeypatch.setenv("PERPETUAL_ALPHA_DEX", "par")
+
+
 TEAM = "0x" + "a" * 40
 AGENT = "0x" + "b" * 40
 CLOID = "0x" + "c" * 32
@@ -241,7 +247,7 @@ def test_cancel_uses_oid_or_cloid_and_checks_nested_result(sdk):
 def test_market_scope_and_credentials_are_hard_guarded(sdk, monkeypatch):
     with pytest.raises(ValueError, match="testnet"):
         HyperliquidVenueClient(HyperliquidVenueConfig(api_url="https://api.hyperliquid.xyz"))
-    with pytest.raises(ValueError, match="par dex"):
+    with pytest.raises(ValueError, match="dex must be"):
         HyperliquidVenueClient(HyperliquidVenueConfig(dex="xyz"))
     client = HyperliquidVenueClient()
     with pytest.raises(ValueError, match="team_wallet"):
