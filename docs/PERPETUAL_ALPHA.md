@@ -74,7 +74,7 @@ objects to integer cents/ticks only at its venue boundary.
 Install the **core + Hyperliquid** Conda environment from the repository root:
 
 ```bash
-conda env create -f environment.hyperliquid.yml
+conda env create --format environment-yaml -f environment.hyperliquid.yml
 conda activate market-maker
 ```
 
@@ -87,7 +87,7 @@ Core model/strategy code remains independent of the SDK.
 To add Hyperliquid to an existing `market-maker` Conda environment:
 
 ```bash
-conda env update -n market-maker -f environment.hyperliquid.yml
+conda env update --format environment-yaml -n market-maker -f environment.hyperliquid.yml
 ```
 
 ## Current scope
