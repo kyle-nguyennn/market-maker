@@ -197,6 +197,8 @@ with `dex=pa` returned `pa:BTC`, `pa:ETH`, and `pa:HYPE`.
 The same query against `https://api.hyperliquid.xyz/info` returned
 HTTP 500. **Both configured phases therefore use testnet for now.**
 The announced seven additional `pa` markets were not visible yet.
+The October 15 SDK L2 probe showed no valid two-sided `pa:BTC` book (mid=None),
+so scored connectivity is **not** scored trading readiness.
 Do not treat DEX discovery as proof of team USDP funding or trading readiness.
 See `notes/20261015_perpetual_alpha_competition_rules.md` for the
 organizer's complete rules and the remaining engineering gaps.
