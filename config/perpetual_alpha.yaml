@@ -1,36 +1,45 @@
+# Reference configuration. Runtime venue selection is driven by
+# .env.template / PERPETUAL_ALPHA_DEX, not this YAML file.
 venue:
   type: hyperliquid
-  network: testnet
-  api_url: https://api.hyperliquid-testnet.xyz
-  ws_url: wss://api.hyperliquid-testnet.xyz/ws
-  dex: par
-  collateral: USDPR
+  dex_env: PERPETUAL_ALPHA_DEX
   sdk_version: "0.24.0"
+  profiles:
+    par:
+      network: testnet
+      api_url: https://api.hyperliquid-testnet.xyz
+      ws_url: wss://api.hyperliquid-testnet.xyz/ws
+      collateral: USDPR
+    pa:
+      network: testnet
+      api_url: https://api.hyperliquid-testnet.xyz
+      ws_url: wss://api.hyperliquid-testnet.xyz/ws
+      collateral: USDP
 
 account:
-  # Never commit wallet private keys.
   team_wallet_env: PERPETUAL_ALPHA_TEAM_WALLET
   api_private_key_env: PERPETUAL_ALPHA_API_PRIVATE_KEY
+  pa_live_trading_gate_env: PERPETUAL_ALPHA_PA_ALLOW_TRADING
 
+# Logical symbols. The configured adapter adds par: or pa: on outbound calls.
 markets:
-  - par:BTC
-  - par:ETH
-  - par:HYPE
-  - par:SP500
-  - par:EWY
-  - par:EWJ
-  - par:BRENT
-  - par:GOLD
-  - par:USDEUR
-  - par:USDJPY
+  - BTC
+  - ETH
+  - HYPE
+  - SP500
+  - EWY
+  - EWJ
+  - BRENT
+  - GOLD
+  - USDEUR
+  - USDJPY
 
 execution:
   default_tif: Alo
   one_order_per_side: true
 
 risk:
-  # Deliberately placeholders until practice collateral and account limits
-  # are confirmed. Do not invent live risk limits.
+  # Still mandatory to fill and enforce before unattended trading.
   max_abs_position: null
   max_order_notional: null
   max_abs_notional: null
