@@ -82,6 +82,35 @@ class HyperliquidMarketAdapter(BaseMarketAdapter):
             invalid_reason=invalid_reason,
         )
 
+    def market_spec_from_meta(self, instrument: str, meta: dict) -> HyperliquidMarketSpec:
+        """Read lot precision from the live par metadata, never from constants."""
+        symbol = self.to_venue_instrument(instrument)
+        for row in meta["universe"]:
+            if row["name"] == symbol:
+                return HyperliquidMarketSpec(sz_decimals=int(row["szDecimals"]))
+        raise ValueError(f"market not found in par metadata: {symbol}")
+
+    def from_sdk_l2_snapshot(self, book: dict, *, asset_ctx: dict | None = None) -> MarketState:
+        """Convert SDK L2 + optional mark/oracle context to the internal model.
+
+        The SDK's wire fields are decimal strings. Conversion to Decimal belongs
+        exclusively to this adapter; the client never invents prices or ticks.
+        """
+        levels = book["levels"]
+        if len(levels) != 2:
+            raise ValueError("Hyperliquid L2 snapshot must contain bid and ask levels")
+        context = asset_ctx or {}
+        return self.snapshot(
+            instrument=book["coin"],
+            timestamp_ms=int(book["time"]),
+            bids=((level["px"], level["sz"]) for level in levels[0]),
+            asks=((level["px"], level["sz"]) for level in levels[1]),
+            oracle_price=context.get("oraclePx"),
+            mark_price=context.get("markPx"),
+            funding_rate=context.get("funding"),
+            open_interest=context.get("openInterest"),
+        )
+
     @staticmethod
     def _quantize_size(size: Decimal, sz_decimals: int) -> Decimal:
         quantum = Decimal(1).scaleb(-sz_decimals)
