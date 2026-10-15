@@ -71,6 +71,10 @@ python -m apps.perpetual_alpha
 python -m apps.perpetual_alpha --check
 ~~~
 
+Already exported shell variables take precedence over the local .env file.
+Use --phase to override only the phase for a single run, or unset the shell
+variable if you want the .env value to take effect.
+
 You can override the environment selection for a single read-only command:
 
 ~~~bash
@@ -108,4 +112,6 @@ exposed in a screenshot and replace it with a fresh approved agent key.
 **Live API discovery on 2026-10-15:** querying the testnet API with dex=pa returned
 pa:BTC, pa:ETH and pa:HYPE. Mainnet dex=pa returned HTTP 500. The organizer's
 announced ten-asset universe was not yet fully visible on pa; re-check
-metadata before the scored phase begins.
+metadata before the scored phase begins. At the October 15 probe,
+pa:BTC market metadata and contexts were accessible, but the order book had
+no valid two-sided quote. That is not an execution-ready market.
