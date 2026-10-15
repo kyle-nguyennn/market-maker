@@ -1,7 +1,7 @@
 """Validated phase-specific Hyperliquid connection settings.
 
-Practice DEX par: testnet/USDPR; scored DEX pa: mainnet/USDP.
-Scored endpoints must be verified via read-only metadata before trading.
+Practice DEX par: testnet/USDPR; scored DEX pa: testnet/USDP.
+Verified 2026-10-15: pa is on testnet (3 symbols visible), not mainnet.
 Secrets belong in local environment variables, never in this module.
 """
 from __future__ import annotations
@@ -20,9 +20,9 @@ _PROFILES = {
         "collateral": "USDPR",
     },
     "pa": {
-        "network": "mainnet",
-        "api_url": "https://api.hyperliquid.xyz",
-        "ws_url": "wss://api.hyperliquid.xyz/ws",
+        "network": "testnet",
+        "api_url": "https://api.hyperliquid-testnet.xyz",
+        "ws_url": "wss://api.hyperliquid-testnet.xyz/ws",
         "dex": "pa",
         "collateral": "USDP",
     },
