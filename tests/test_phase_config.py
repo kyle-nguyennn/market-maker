@@ -17,9 +17,9 @@ def _environment(phase: str) -> dict[str, str]:
         "PERPETUAL_ALPHA_PAR_WS_URL": "wss://api.hyperliquid-testnet.xyz/ws",
         "PERPETUAL_ALPHA_PAR_DEX": "par",
         "PERPETUAL_ALPHA_PAR_COLLATERAL": "USDPR",
-        "PERPETUAL_ALPHA_PA_NETWORK": "mainnet",
-        "PERPETUAL_ALPHA_PA_API_URL": "https://api.hyperliquid.xyz",
-        "PERPETUAL_ALPHA_PA_WS_URL": "wss://api.hyperliquid.xyz/ws",
+        "PERPETUAL_ALPHA_PA_NETWORK": "testnet",
+        "PERPETUAL_ALPHA_PA_API_URL": "https://api.hyperliquid-testnet.xyz",
+        "PERPETUAL_ALPHA_PA_WS_URL": "wss://api.hyperliquid-testnet.xyz/ws",
         "PERPETUAL_ALPHA_PA_DEX": "pa",
         "PERPETUAL_ALPHA_PA_COLLATERAL": "USDP",
         "PERPETUAL_ALPHA_PA_ALLOW_TRADING": "false",
@@ -31,8 +31,8 @@ def _environment(phase: str) -> dict[str, str]:
     [
         ("par", "testnet", "https://api.hyperliquid-testnet.xyz",
          "wss://api.hyperliquid-testnet.xyz/ws", "USDPR", "par:BTC"),
-        ("pa", "mainnet", "https://api.hyperliquid.xyz",
-         "wss://api.hyperliquid.xyz/ws", "USDP", "pa:BTC"),
+        ("pa", "testnet", "https://api.hyperliquid-testnet.xyz",
+         "wss://api.hyperliquid-testnet.xyz/ws", "USDP", "pa:BTC"),
     ],
 )
 def test_phase_resolves_all_routing_fields(
@@ -59,9 +59,9 @@ def test_explicit_phase_overrides_environment_selector():
 @pytest.mark.parametrize(
     "key,value",
     [
-        ("PERPETUAL_ALPHA_PA_NETWORK", "testnet"),
-        ("PERPETUAL_ALPHA_PA_API_URL", "https://api.hyperliquid-testnet.xyz"),
-        ("PERPETUAL_ALPHA_PA_WS_URL", "wss://api.hyperliquid-testnet.xyz/ws"),
+        ("PERPETUAL_ALPHA_PA_NETWORK", "mainnet"),
+        ("PERPETUAL_ALPHA_PA_API_URL", "https://api.hyperliquid.xyz"),
+        ("PERPETUAL_ALPHA_PA_WS_URL", "wss://api.hyperliquid.xyz/ws"),
         ("PERPETUAL_ALPHA_PA_DEX", "par"),
         ("PERPETUAL_ALPHA_PA_COLLATERAL", "USDPR"),
     ],
@@ -121,13 +121,13 @@ def test_selected_endpoint_routes_to_both_rest_and_ws(monkeypatch):
     assert client.query_meta()["universe"][0]["name"] == "pa:BTC"
     assert client.subscribe_public("l2Book", "BTC", lambda _: None) == 7
     assert constructed == [
-        ("https://api.hyperliquid.xyz", True, ["pa"]),
-        ("https://api.hyperliquid.xyz", False, ["pa"]),
+        ("https://api.hyperliquid-testnet.xyz", True, ["pa"]),
+        ("https://api.hyperliquid-testnet.xyz", False, ["pa"]),
     ]
     client.close_stream()
 
 
-def test_live_signed_sdk_uses_mainnet_and_scored_dex(monkeypatch):
+def test_live_signed_sdk_uses_testnet_and_scored_dex(monkeypatch):
     data = _environment("pa")
     data["PERPETUAL_ALPHA_PA_ALLOW_TRADING"] = "true"
     config = HyperliquidVenueConfig.from_environment(environ=data)
@@ -145,7 +145,7 @@ def test_live_signed_sdk_uses_mainnet_and_scored_dex(monkeypatch):
     monkeypatch.setattr("exchanges.hyperliquid.client.Exchange", FakeExchange)
     client = HyperliquidVenueClient(config)
     client.connect_exchange(team_wallet="0x" + "a" * 40, api_private_key="dummy-test-key")
-    assert captured["api_url"] == "https://api.hyperliquid.xyz"
+    assert captured["api_url"] == "https://api.hyperliquid-testnet.xyz"
     assert captured["dexes"] == ["pa"]
     assert captured["team"] == "0x" + "a" * 40
 
