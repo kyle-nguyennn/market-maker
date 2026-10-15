@@ -76,3 +76,53 @@ def test_hyperliquid_result_normalizes_back_to_decimal() -> None:
     assert report.exchange_order_id == 42
     assert report.filled_size == Decimal("0.125")
     assert report.average_price == Decimal("101.25")
+
+
+def test_real_sdk_l2_and_context_normalize_to_decimal_state() -> None:
+    adapter = HyperliquidMarketAdapter()
+    book = {
+        "coin": "par:BTC",
+        "time": 123456789,
+        "levels": [
+            [{"px": "65000.1", "sz": "0.1200", "n": 3}],
+            [{"px": "65000.2", "sz": "0.2300", "n": 2}],
+        ],
+    }
+    context = {
+        "oraclePx": "65000.15",
+        "markPx": "65000.16",
+        "funding": "0.000001",
+        "openInterest": "1250.01",
+    }
+    state = adapter.from_sdk_l2_snapshot(book, asset_ctx=context)
+    assert state.instrument == "BTC"
+    assert state.timestamp_ms == 123456789
+    assert state.best_bid == Decimal("65000.1")
+    assert state.best_ask == Decimal("65000.2")
+    assert state.oracle_price == Decimal("65000.15")
+    assert state.mark_price == Decimal("65000.16")
+    assert state.funding_rate == Decimal("0.000001")
+    assert state.open_interest == Decimal("1250.01")
+    assert state.is_valid
+
+
+def test_sdk_metadata_resolves_lot_precision() -> None:
+    adapter = HyperliquidMarketAdapter()
+    info = {"universe": [
+        {"name": "par:BTC", "szDecimals": 4},
+        {"name": "par:ETH", "szDecimals": 4},
+    ]}
+    spec = adapter.market_spec_from_meta("BTC", info)
+    assert spec.sz_decimals == 4
+    with __import__("pytest").raises(ValueError, match="not found"):
+        adapter.market_spec_from_meta("HYPE", info)
+
+
+def test_sdk_snapshot_crossed_book_is_rejected() -> None:
+    adapter = HyperliquidMarketAdapter()
+    state = adapter.from_sdk_l2_snapshot({
+        "coin": "par:BTC", "time": 2,
+        "levels": [[{"px": "100", "sz": "1"}], [{"px": "99", "sz": "1"}]],
+    })
+    assert not state.is_valid
+    assert state.invalid_reason == "crossed_book"
