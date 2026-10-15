@@ -4,6 +4,7 @@ from dataclasses import dataclass, replace
 from decimal import Decimal
 from enum import Enum
 from uuid import NAMESPACE_URL, uuid4, uuid5
+import re
 
 from model.order import (
     CancelAction, OrderAction, OrderEvent, OrderEventType, OrderIntent,
@@ -106,7 +107,7 @@ class OrderManager:
             raise ReconciliationError("invalid recovered order price/size")
         if not (Decimal(0) <= order.remaining_size <= order.original_size):
             raise ReconciliationError("invalid remaining_size in recovered order")
-        if not order.client_order_id.startswith("0x") or len(order.client_order_id) != 34:
+        if re.fullmatch(r"0x[0-9a-fA-F]{32}", order.client_order_id) is None:
             raise ReconciliationError("invalid recovered CLOID")
 
     @staticmethod
@@ -153,6 +154,8 @@ class OrderManager:
         try:
             for snapshot in open_orders:
                 self._validate_order(snapshot)
+                if snapshot.exchange_order_id is None:
+                    raise ReconciliationError("open order snapshot missing venue OID")
                 cloid = snapshot.client_order_id
                 if cloid in observed or self._slot(snapshot) in slots:
                     raise ReconciliationError("duplicate venue order/slot")
@@ -216,6 +219,8 @@ class OrderManager:
             event.account_id is None or event.account_id.lower() != self.account_id.lower()
         ):
             raise ValueError("wrong-account order update")
+        if not isinstance(event.kind, OrderEventType):
+            raise ValueError("unrecognized normalized order event")
         order = self.live_orders.get(event.client_order_id)
         if order is None:
             self.start_recovery("unknown_order_update")
@@ -247,6 +252,10 @@ class OrderManager:
         if kind is OrderEventType.UNKNOWN:
             order.state = OrderState.UNKNOWN
             self.start_recovery("ambiguous_order_action")
+        elif order.state is OrderState.REJECTED:
+            if kind in (OrderEventType.RESTING, OrderEventType.PARTIAL_FILL, OrderEventType.FILLED):
+                self.start_recovery("rejected_order_later_seen_live")
+                raise ReconciliationError("rejected order later observed live")
         elif order.state is OrderState.FILLED:
             pass  # Late/replayed status cannot reopen an already filled order.
         elif kind is OrderEventType.FILLED or order.remaining_size == 0:
@@ -300,6 +309,10 @@ class OrderManager:
                 self.start_recovery("multiple_live_orders_same_side")
                 raise ReconciliationError("two live orders occupy one quote slot")
             active[slot] = order
+
+        if any(order.state is OrderState.UNKNOWN for order in active.values()):
+            self.start_recovery("unknown_live_order")
+            return []
 
         cancels: list[OrderAction] = []
         places: list[OrderAction] = []
