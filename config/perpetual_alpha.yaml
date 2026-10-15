@@ -1,21 +1,19 @@
 # Reference configuration. Runtime venue selection is driven by
-# .env.template / PERPETUAL_ALPHA_PHASE, not this YAML file.
+# .env.template / PERPETUAL_ALPHA_DEX, not this YAML file.
 venue:
   type: hyperliquid
-  phase_env: PERPETUAL_ALPHA_PHASE
+  dex_env: PERPETUAL_ALPHA_DEX
   sdk_version: "0.24.0"
   profiles:
     par:
       network: testnet
       api_url: https://api.hyperliquid-testnet.xyz
       ws_url: wss://api.hyperliquid-testnet.xyz/ws
-      dex: par
       collateral: USDPR
     pa:
       network: testnet
       api_url: https://api.hyperliquid-testnet.xyz
       ws_url: wss://api.hyperliquid-testnet.xyz/ws
-      dex: pa
       collateral: USDP
 
 account:
