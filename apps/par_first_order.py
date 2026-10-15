@@ -151,18 +151,20 @@ def prepare_order(
 
 
 def _assert_after(client: HyperliquidVenueClient, wallet: str, cloid: str) -> None:
-    """Confirm no smoke-order exposure remains; never infer a flat position from cancel."""
+    """Verify no BTC order is open and no position remains, even without CLOIDs."""
     orders = _open_orders_for_symbol(client.query_open_orders(wallet))
-    own = [o for o in orders if str(o.get("cloid", "")).lower() == cloid.lower()]
-    if own:
-        raise SmokeTestError(f"smoke order still open: {own!r}")
+    if orders:
+        raise SmokeTestError(
+            f"par:BTC still has {len(orders)} open order(s), "
+            f"including potentially {cloid}; inspect/cancel manually"
+        )
     position = _position_size(client.query_positions(wallet))
     if position != 0:
         raise SmokeTestError(
             f"par:BTC position is {position}; order cancellation cannot close fills. "
             "Review the account and close exposure deliberately."
         )
-    print("FINAL VERIFICATION: no matching open order; par:BTC position = 0.")
+    print("FINAL VERIFICATION: no par:BTC open orders; par:BTC position = 0.")
 
 
 def run_once(
@@ -173,23 +175,19 @@ def run_once(
     *,
     wait_seconds: float = 0.4,
 ) -> None:
-    """Submit ONE order, then cancel, including after ambiguous network failure."""
+    """Attempt ONE order, cancellation, and verification even after SDK timeouts."""
     plan = prepare_order(client, adapter, wallet)
     print(
         f"PLAN: {plan.request.instrument} BUY ALO sz={plan.request.size} "
         f"px={plan.request.price} notional={plan.notional:.2f} USDPR; "
         f"bid={plan.bid} ask={plan.ask} cloid={plan.request.client_order_id}"
     )
-
-    # Pre-signer checks run above. Never log the private key or the Exchange object.
     client.connect_exchange(team_wallet=wallet, api_private_key=api_private_key)
-    attempted = False
-    order_id: int | None = None
+    submission_error: Exception | None = None
+    cancel_error: Exception | None = None
     try:
-        attempted = True
         result = client.place_order(plan.request)
-        order_id = result.order_id
-        print(f"ORDER ACK: status={result.status} oid={order_id}")
+        print(f"ORDER ACK: status={result.status} oid={result.order_id}")
         if result.status == "error":
             raise SmokeTestError(f"exchange rejected ALO order: {result.error}")
         if result.status != "resting":
@@ -199,33 +197,53 @@ def run_once(
             )
         if wait_seconds:
             time.sleep(wait_seconds)
+    except Exception as exc:
+        # A thrown timeout is ambiguous: the venue may have accepted the order.
+        submission_error = exc
     finally:
-        if attempted:
-            # Cancel by CLOID even if place_order timed out after exchange acceptance.
-            print(f"CANCEL ATTEMPT: {plan.request.client_order_id}")
-            try:
-                client.cancel_order(
-                    "BTC", client_order_id=plan.request.client_order_id
-                )
-                print("CANCEL ACK: success")
-            except Exception as exc:
-                print(
-                    "CANCEL NOT CONFIRMED: "
-                    f"{type(exc).__name__}: {exc}; "
-                    "the order may still be live. Inspect/cancel manually.",
-                    file=sys.stderr,
-                )
-                raise
+        print(f"CANCEL ATTEMPT (by CLOID): {plan.request.client_order_id}")
+        try:
+            if not client.cancel_order(
+                "BTC", client_order_id=plan.request.client_order_id
+            ):
+                raise SmokeTestError("cancel response was not successful")
+            print("CANCEL ACK: success")
+        except Exception as exc:
+            cancel_error = exc
+            print(
+                f"CANCEL NOT CONFIRMED ({type(exc).__name__}); "
+                "the order may still be live; check Hyperliquid's UI.",
+                file=sys.stderr,
+            )
 
-    # Read-after-write verification; REST may briefly lag the cancel acknowledgement.
+    # Even after cancellation errors, try to establish whether any exposure
+    # exists. Only a confirmed empty open-order book AND flat position pass.
+    verification_error: Exception | None = None
     for attempt in range(3):
         try:
             _assert_after(client, wallet, plan.request.client_order_id)
-            return
-        except SmokeTestError:
-            if attempt == 2:
-                raise
-            time.sleep(0.5)
+            verification_error = None
+            break
+        except Exception as exc:
+            verification_error = exc
+            if attempt < 2:
+                time.sleep(0.5)
+
+    if verification_error is not None:
+        raise SmokeTestError(
+            f"post-trade state NOT verified: {verification_error}. "
+            "Inspect open orders and positions manually."
+        ) from verification_error
+    if cancel_error is not None:
+        raise SmokeTestError(
+            "order may be flat, but cancellation was not acknowledged; "
+            "check the venue's order status before another attempt"
+        ) from cancel_error
+    if submission_error is not None:
+        raise SmokeTestError(
+            f"submission did not produce a confirmed resting order: "
+            f"{type(submission_error).__name__}: {submission_error}"
+        ) from submission_error
 
 
 def main() -> int:
