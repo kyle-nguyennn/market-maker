@@ -168,7 +168,7 @@ def test_one_resting_order_cancel_and_verify_flat(client, adapter):
 
 def test_ambiguous_placement_timeout_attempts_cancel_by_cloid(client, adapter):
     client.post_exception = TimeoutError("request timed out")
-    with pytest.raises(TimeoutError):
+    with pytest.raises(SmokeTestError, match="submission did not produce"):
         run_once(client, adapter, WALLET, "test-agent-key", wait_seconds=0)
     assert client.sent
     assert client.cancels == [client.sent.client_order_id]
@@ -186,7 +186,7 @@ def test_unexpected_alo_fill_attempts_cancel_and_reports_issue(client, adapter):
 
 def test_cancel_exception_cannot_be_silently_ignored(client, adapter):
     client.cancel_exception = TimeoutError("cancel timed out")
-    with pytest.raises(TimeoutError, match="cancel timed out"):
+    with pytest.raises(SmokeTestError, match="state NOT verified"):
         run_once(client, adapter, WALLET, "test-agent-key", wait_seconds=0)
     assert client.open_orders != []
 
@@ -199,5 +199,5 @@ def test_verification_rejects_residual_position_and_open_order(client):
         _assert_after(client, WALLET, CLOID)
     client.positions = []
     client.open_orders = [{"coin": "par:BTC", "cloid": CLOID}]
-    with pytest.raises(SmokeTestError, match="still open"):
+    with pytest.raises(SmokeTestError, match="still has"):
         _assert_after(client, WALLET, CLOID)
