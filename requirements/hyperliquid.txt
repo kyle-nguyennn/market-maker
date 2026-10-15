@@ -2,3 +2,5 @@
 # Include the same core dependencies as environment.yml / core-only installs.
 -r common.txt
 hyperliquid-python-sdk==0.24.0
+# Load locally Git-ignored .env without overriding explicitly exported variables.
+python-dotenv>=1.0,<2
