@@ -16,8 +16,8 @@ from exchanges.hyperliquid.types import OrderSide, TimeInForce, VenueOrderReques
 
 @pytest.fixture(autouse=True)
 def _default_practice_profile(monkeypatch):
-    # These are practice contract tests even if the developer's .env selects pa.
-    monkeypatch.setenv("PERPETUAL_ALPHA_PHASE", "par")
+    # These are par contract tests even if the developer's .env selects pa.
+    monkeypatch.setenv("PERPETUAL_ALPHA_DEX", "par")
 
 
 TEAM = "0x" + "a" * 40
