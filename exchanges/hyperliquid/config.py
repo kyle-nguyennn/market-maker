@@ -18,6 +18,10 @@ class HyperliquidVenueConfig:
     sdk_version: str = "0.24.0"
 
     def venue_symbol(self, instrument: str) -> str:
+        if not instrument or not instrument.strip():
+            raise ValueError("instrument must be non-empty")
         if ":" in instrument:
+            if not instrument.startswith(f"{self.dex}:") or instrument == f"{self.dex}:":
+                raise ValueError(f"instrument must belong to dex {self.dex}")
             return instrument
         return f"{self.dex}:{instrument}"
