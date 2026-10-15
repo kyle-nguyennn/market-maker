@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from decimal import Decimal
+import time
 
 import pytest
 
@@ -21,7 +22,7 @@ from market_handler.hyperliquid_adapter import HyperliquidMarketAdapter
 
 WALLET = "0x" + "a" * 40
 CLOID = "0x" + "c" * 32
-NOW = 1_800_000_000_000
+NOW = int(time.time() * 1000)
 
 
 class FakeClient:
