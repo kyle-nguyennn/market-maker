@@ -14,6 +14,12 @@ from exchanges.hyperliquid.client import HyperliquidVenueClient, _sdk_float
 from exchanges.hyperliquid.config import HyperliquidVenueConfig
 from exchanges.hyperliquid.types import OrderSide, TimeInForce, VenueOrderRequest
 
+@pytest.fixture(autouse=True)
+def _default_practice_profile(monkeypatch):
+    # These are practice contract tests even if the developer's .env selects pa.
+    monkeypatch.setenv("PERPETUAL_ALPHA_PHASE", "par")
+
+
 TEAM = "0x" + "a" * 40
 AGENT = "0x" + "b" * 40
 CLOID = "0x" + "c" * 32
