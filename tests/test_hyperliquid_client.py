@@ -309,3 +309,23 @@ def test_leverage_is_explicit_and_uses_prefixed_market(sdk):
         client.update_leverage("BTC", 0)
     client.update_leverage("BTC", 2)
     assert ("leverage", 2, "par:BTC", True) in sdk[1].instances[-1].calls
+
+
+def test_active_asset_data_queries_exact_team_account_and_dex_symbol(sdk):
+    client = HyperliquidVenueClient()
+    requests = []
+    client._info = SimpleNamespace(post=lambda path, payload: (
+        requests.append((path, payload))
+        or {"user": TEAM, "coin": payload["coin"],
+            "maxTradeSzs": ["1.0", "2.0"],
+            "availableToTrade": ["1000", "2000"], "markPx": "100"}
+    ))
+    answer = client.query_active_asset_data(TEAM, "BTC")
+    assert requests == [("/info", {
+        "type": "activeAssetData", "user": TEAM, "coin": "par:BTC",
+    })]
+    assert answer["coin"] == "par:BTC"
+    with pytest.raises(ValueError):
+        client.query_active_asset_data("invalid", "BTC")
+    with pytest.raises(ValueError):
+        client.query_active_asset_data(TEAM, "pa:BTC")
