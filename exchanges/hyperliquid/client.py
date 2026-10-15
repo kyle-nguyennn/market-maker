@@ -153,7 +153,7 @@ class HyperliquidVenueClient:
     def connect_exchange(self, *, team_wallet: str, api_private_key: str) -> None:
         """Configure the already-approved agent signer; does NOT approve a key."""
         # Selecting pa or supplying a secret never silently enables live trading.
-        if self.config.phase == "pa" and not self.config.allow_live_trading:
+        if self.config.dex == "pa" and not self.config.allow_live_trading:
             raise PermissionError(
                 "pa trading is disabled. Verify network, live account funding, "
                 "API authorization and risk limits, then explicitly set "
