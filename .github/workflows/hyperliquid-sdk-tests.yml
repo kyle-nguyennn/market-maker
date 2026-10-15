@@ -44,8 +44,8 @@ jobs:
         run: python -m compileall -q exchanges market_handler model apps tests
       - name: Run offline SDK boundary tests
         run: python -m pytest -q
-      - name: Run contract suite with scored phase selected
-        run: PERPETUAL_ALPHA_PHASE=pa python -m pytest -q
+      - name: Run contract suite with scored DEX selected
+        run: PERPETUAL_ALPHA_DEX=pa python -m pytest -q
 
   live-testnet-readonly:
     # Best-effort diagnostic: public market endpoints only, no account or keys.
@@ -107,23 +107,23 @@ jobs:
           from exchanges.hyperliquid.client import HyperliquidVenueClient
           from market_handler.hyperliquid_adapter import HyperliquidMarketAdapter
 
-          for phase in ("par", "pa"):
-              config = HyperliquidVenueConfig.from_environment(phase=phase, environ={})
+          for dex in ("par", "pa"):
+              config = HyperliquidVenueConfig.from_environment(dex=dex, environ={})
               client = HyperliquidVenueClient(config)
               adapter = HyperliquidMarketAdapter(config)
               meta = client.query_meta()
               names = [item["name"] for item in meta.get("universe", [])]
-              coin = f"{phase}:BTC"
+              coin = f"{dex}:BTC"
               assert coin in names, f"{coin} absent from {config.api_url}: {names}"
               contexts = client.query_meta_and_asset_contexts()
               indices = [item["name"] for item in contexts[0]["universe"]]
-              assert coin in indices, f"{coin} absent from {phase} contexts"
+              assert coin in indices, f"{coin} absent from {dex} contexts"
               book = client.query_l2_book("BTC")
               state = adapter.from_sdk_l2_snapshot(
                   book, asset_ctx=contexts[1][indices.index(coin)]
               )
               print(
-                  f"VALIDATED phase={phase} network={config.network} "
+                  f"VALIDATED dex={dex} network={config.network} "
                   f"url={config.api_url} collateral={config.collateral} "
                   f"markets={len(names)} names={names} "
                   f"book_valid={state.is_valid} mid={state.mid}",
