@@ -12,9 +12,9 @@ venue:
       dex: par
       collateral: USDPR
     pa:
-      network: mainnet
-      api_url: https://api.hyperliquid.xyz
-      ws_url: wss://api.hyperliquid.xyz/ws
+      network: testnet
+      api_url: https://api.hyperliquid-testnet.xyz
+      ws_url: wss://api.hyperliquid-testnet.xyz/ws
       dex: pa
       collateral: USDP
 
