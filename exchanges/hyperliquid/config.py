@@ -1,4 +1,4 @@
-"""Validated phase-specific Hyperliquid connection settings.
+"""Validated DEX-specific Hyperliquid connection settings.
 
 Practice DEX par: testnet/USDPR; scored DEX pa: testnet/USDP.
 Verified 2026-10-15: pa is on testnet (3 symbols visible), not mainnet.
@@ -11,23 +11,21 @@ from dataclasses import dataclass
 from typing import Mapping
 
 
-_PROFILES = {
+_DEX_PROFILES = {
     "par": {
         "network": "testnet",
         "api_url": "https://api.hyperliquid-testnet.xyz",
         "ws_url": "wss://api.hyperliquid-testnet.xyz/ws",
-        "dex": "par",
         "collateral": "USDPR",
     },
     "pa": {
         "network": "testnet",
         "api_url": "https://api.hyperliquid-testnet.xyz",
         "ws_url": "wss://api.hyperliquid-testnet.xyz/ws",
-        "dex": "pa",
         "collateral": "USDP",
     },
 }
-_ALLOWED_PHASES = frozenset(_PROFILES)
+_ALLOWED_DEXES = frozenset(_DEX_PROFILES)
 
 
 @dataclass(frozen=True)
@@ -38,7 +36,6 @@ class HyperliquidVenueConfig:
     SDK client is constructed. Selecting pa does not authorize signed trading.
     """
 
-    phase: str = "par"
     network: str = "testnet"
     api_url: str = "https://api.hyperliquid-testnet.xyz"
     ws_url: str = "wss://api.hyperliquid-testnet.xyz/ws"
@@ -48,34 +45,34 @@ class HyperliquidVenueConfig:
     sdk_version: str = "0.24.0"
 
     def __post_init__(self) -> None:
-        if self.phase not in _ALLOWED_PHASES:
-            raise ValueError("phase must be par (practice) or pa (scored)")
-        expected = _PROFILES[self.phase]
+        if self.dex not in _ALLOWED_DEXES:
+            raise ValueError("dex must be par (practice) or pa (scored)")
+        expected = _DEX_PROFILES[self.dex]
         for field, value in expected.items():
             actual = getattr(self, field)
             if field == "api_url":
                 actual = actual.rstrip("/")
             if actual != value:
                 raise ValueError(
-                    f"{self.phase}: invalid {field} ({actual!r}); "
+                    f"{self.dex}: invalid {field} ({actual!r}); "
                     f"expected {value!r}. Check network/dex/collateral configuration"
                 )
         if self.sdk_version != "0.24.0":
             raise ValueError("supported Hyperliquid SDK version is 0.24.0")
-        if self.phase == "par" and self.allow_live_trading:
+        if self.dex == "par" and self.allow_live_trading:
             raise ValueError("live trading authorization is only valid for pa")
 
     @classmethod
     def from_environment(
         cls,
         *,
-        phase: str | None = None,
+        dex: str | None = None,
         environ: Mapping[str, str] | None = None,
     ) -> "HyperliquidVenueConfig":
         """Load .env and process variables, or an explicit mapping in tests.
 
         python-dotenv preserves existing process variables (override=False).
-        Explicit phase= (e.g. --phase pa) takes precedence over the env selector.
+        Explicit dex= (e.g. --dex pa) takes precedence over the env selector.
         Values for the other DEX are never consulted.
         """
         if environ is None:
@@ -83,10 +80,10 @@ class HyperliquidVenueConfig:
 
             load_dotenv(override=False)
             environ = os.environ
-        selected = (phase or environ.get("PERPETUAL_ALPHA_PHASE", "par")).strip().lower()
-        if selected not in _ALLOWED_PHASES:
-            raise ValueError("PERPETUAL_ALPHA_PHASE must be par or pa")
-        defaults = _PROFILES[selected]
+        selected = (dex or environ.get("PERPETUAL_ALPHA_DEX", "par")).strip().lower()
+        if selected not in _ALLOWED_DEXES:
+            raise ValueError("PERPETUAL_ALPHA_DEX must be par or pa")
+        defaults = _DEX_PROFILES[selected]
         prefix = f"PERPETUAL_ALPHA_{selected.upper()}_"
         settings = {
             key: environ.get(prefix + key.upper(), value).strip()
@@ -96,7 +93,7 @@ class HyperliquidVenueConfig:
         if raw_allow not in {"true", "false", "1", "0"}:
             raise ValueError("PERPETUAL_ALPHA_PA_ALLOW_TRADING must be true or false")
         allow_live = selected == "pa" and raw_allow in {"true", "1"}
-        return cls(phase=selected, allow_live_trading=allow_live, **settings)
+        return cls(dex=selected, allow_live_trading=allow_live, **settings)
 
     def venue_symbol(self, instrument: str) -> str:
         if not instrument or not instrument.strip():
