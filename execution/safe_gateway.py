@@ -15,7 +15,7 @@ from model.order import (
     CancelAction, ExecutionStatus, OrderAction, OrderEvent,
     OrderEventType, PlaceAction,
 )
-from risk.risk_manager import RiskDecision, RiskManager, RiskSnapshot
+from risk.risk_manager import OpenExposure, RiskDecision, RiskManager, RiskSnapshot
 
 
 @dataclass(frozen=True)
@@ -149,6 +149,13 @@ class SafeExecutionGateway:
             or snap.expected_account_id.lower() != self.manager.account_id.lower()
         ):
             return self._block(action, "gateway_account_or_dex_mismatch")
+        # Never trust a caller-supplied exposure list: source fillable orders
+        # directly from the manager, including pending new AND pending cancel.
+        exposures = tuple(
+            OpenExposure(o.instrument, o.side, o.remaining_size, o.client_order_id)
+            for o in self.manager.live_orders.values() if o.active
+        )
+        snap = replace(snap, fillable_orders=exposures)
         decision: RiskDecision = self.risk.evaluate_placement(
             replace(intent, price=price, size=size), snap
         )
