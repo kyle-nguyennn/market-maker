@@ -5,7 +5,7 @@
 **Date:** 2026-10-15 (SGT)  
 **Owner / team:** Auror, Perpetual Alpha  
 **Mission:** implement **P0 order reconciliation**, **P0 hard risk controls**, then **P1 conservative market-making baseline** before the organizer's stated **2026-10-19** scored trading start.  
-**Scope of this commit:** handoff documentation only. **No runtime implementation is claimed here.**
+**Initial scope:** this handoff originally preceded implementation. The progress section at the end now records branch implementation and verification.
 
 ## 0. Instructions to the next coding agent
 
@@ -210,3 +210,42 @@ When pausing or handing work off again, append:
 - Any active orders/positions **only if verified from account queries**, otherwise say not checked.
 - Known unknowns and one concrete next command or file to implement.
 - Confirmation that no secrets were logged and whether any authenticated exchange actions were deliberately performed.
+
+
+---
+
+## 9. October 15 continued agent execution — PR #6
+
+**Branch:** `feat/perpetual-alpha-order-risk-quoter`  
+**PR:** [#6 (draft)](https://github.com/kyle-nguyennn/market-maker/pull/6)  
+**Last code increment:** `f4f339f2f1994272f1a3c36fd6b099e580fb80ef` (scoped read-only capacity query test).  
+**Previously completed all-code green CI:** [run 38716722883](https://github.com/kyle-nguyennn/market-maker/actions/runs/38716722883), **122 passed** with the default `par` selection and **122 passed** with `PERPETUAL_ALPHA_DEX=pa`. The subsequent activeAssetData-query increment requires its own CI verification.
+
+### Completed in this continuation
+
+- [x] **A1 domain primitives (pure portion):** `OrderEventType`, `OrderEvent`, `PlaceAction`, `CancelAction` with 128-bit hexadecimal CLOIDs and cumulative-fill semantics. **Raw WS event parsing is NOT implemented.**
+- [x] **A2 pure order manager:** `OrderManager.reconcile()` no longer throws. Supports one quote per symbol+side, no duplicate while pending, cancel/wait/replace, partial cumulative fill/late duplicate handling, send/cancel uncertainty quarantine, explicit fail-closed snapshot/status recovery, and manual emergency cancellation of known resting orders. **Startup REST/WS orchestration and durable journal are NOT implemented.**
+- [x] **A3 mock-validated gateway core:** `execution/safe_gateway.py` defaults to dry-run, checks final quantized request, verifies account/DEX/intent against reservation, and evaluates all still-fillable orders sourced from OrderManager. Mocked live SDK placements, cancels, timeouts and kill switch have deterministic tests. **Do not treat this as authorization for live use.**
+- [x] **B1 pure risk model:** `RiskManager.evaluate_placement()` enforces finite positive prices/sizes, passive post-only prices, stale/future/invalid book, price collar, min/max notional including full reduce-only close exception, worst-case long/short position and gross/net limits, verified equity/margin/capacity fields, and latched absolute drawdown kill. `null` required thresholds block placement.
+- [x] **Fill-ID dedup in single-instrument accounting proxy:** new `seen_fill_ids` prevents REST/WS replay from double-applying unique per-trade fill IDs; supports negative fees (rebates).
+- [x] **Docs** updated: `docs/PERPETUAL_ALPHA.md` and `exchanges/hyperliquid/AGENTS.md` now distinguish practice `par` from scored `pa`.
+- [x] **Read-only `activeAssetData` request** wired through `HyperliquidVenueClient.query_active_asset_data(team_wallet, instrument)` with selected-DEX symbol and master-account address. **No capacity conversion, margin-mode equity integration or live account query has been verified.**
+
+### Safety and incomplete acceptance gates
+
+- Current `RiskSnapshot.capacity_buy/capacity_sell` expects **base-asset quantities**. Official `activeAssetData.availableToTrade` represents **notional**, while `maxTradeSzs` and precise account margin semantics require an explicit confirmed conversion policy. **Never feed raw availableToTrade numbers directly into these fields.** Source: Hyperliquid's `activeAssetData` info endpoint documentation. Until mapped and tested, the snapshot builder must pass unavailable capacity (blocks new orders).
+- Current runner does not create authoritative `RiskSnapshot` from verified USDPR/USDP account state and `activeAssetData`. No continuous runner exists.
+- No durable action-before-send journal, atomic dispatch lock, callback dedup storage, reconnect snapshot anchor, or exact raw SDK `orderUpdates`/`userFills` WS translator yet.
+- Rate-limit budget, reserved cancellation headroom, stale-feed cancellation orchestration, and bounded cancel retry/recovery remain missing.
+- No baseline quoting strategy, offline paper-runner loop, or `pa` funds/book readiness verification.
+- Do not merge this PR as live-ready. Existing `PERPETUAL_ALPHA_PA_ALLOW_TRADING=false` guard remains unchanged. Real account orders/positions were **not queried** in this continuation.
+- Authenticated venue actions performed by this agent: **none**. No credentials read or printed. Integration tests use an offline fake SDK client only.
+
+### Focused next steps (in order)
+
+1. Build `exchanges/hyperliquid/` **fixture-validated event normalization** for confirmed REST status shapes and WS `orderUpdates`/`userFills`, with explicit side/DEX/wallet validation and fill-ID dedup; do not infer unknown shapes.
+2. Implement **persistent action journal** written before network sends, startup snapshot anchor, position/fill replay, and reconciliation status checks. Ensure unknown CLOIDs cannot escape quarantine.
+3. Add `activeAssetData` -> **confirmed** base-size capacities + Standard/Unified equity adapter, including stale/failing reads. Wire one authoritative snapshot provider to `SafeExecutionGateway`.
+4. Implement request budgets, kill-triggered cancel dispatch/retry and a small deterministic paper replay. Do NOT enable live mode until those are green.
+
+**Next local test command:** `python -m pytest -q tests/test_order_manager.py tests/test_safe_execution.py tests/test_risk_manager.py tests/test_portfolio_fills.py tests/test_hyperliquid_client.py`. Also test with `PERPETUAL_ALPHA_DEX=pa`. Open PR #6 checks to confirm the final head is green before continuing.
