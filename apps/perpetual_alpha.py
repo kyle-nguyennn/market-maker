@@ -1,8 +1,8 @@
 """Perpetual Alpha read-only diagnostics for either competition DEX.
 
 python -m apps.perpetual_alpha --check                   # profile in .env
-python -m apps.perpetual_alpha --check --phase par       # practice testnet
-python -m apps.perpetual_alpha --check --phase pa        # scored mainnet
+python -m apps.perpetual_alpha --check --dex par       # practice testnet
+python -m apps.perpetual_alpha --check --dex pa        # scored testnet
 Never signs orders or reads an API private key.
 """
 from __future__ import annotations
@@ -16,10 +16,10 @@ from market_handler.hyperliquid_adapter import HyperliquidMarketAdapter
 
 
 def build_read_only_stack(
-    phase: str | None = None,
+    dex: str | None = None,
 ) -> tuple[HyperliquidVenueClient, HyperliquidMarketAdapter]:
     """The same validated profile must drive both SDK and symbol adapter."""
-    config = HyperliquidVenueConfig.from_environment(phase=phase)
+    config = HyperliquidVenueConfig.from_environment(dex=dex)
     return HyperliquidVenueClient(config), HyperliquidMarketAdapter(config)
 
 
@@ -77,12 +77,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Perpetual Alpha read-only venue diagnostics")
     parser.add_argument("--check", action="store_true", help="query the selected network")
     parser.add_argument(
-        "--phase", choices=("par", "pa"), default=None,
-        help="override PERPETUAL_ALPHA_PHASE from .env without changing it",
+        "--dex", choices=("par", "pa"), default=None,
+        help="override PERPETUAL_ALPHA_DEX from .env without changing it",
     )
     parser.add_argument("--instrument", default="BTC", help="unqualified market e.g. BTC")
     args = parser.parse_args()
-    client, adapter = build_read_only_stack(phase=args.phase)
+    client, adapter = build_read_only_stack(dex=args.dex)
     if not args.check:
         print(
             f"SDK configured: network={client.config.network} "
