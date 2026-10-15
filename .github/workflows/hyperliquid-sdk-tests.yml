@@ -44,6 +44,8 @@ jobs:
         run: python -m compileall -q exchanges market_handler model apps tests
       - name: Run offline SDK boundary tests
         run: python -m pytest -q
+      - name: Run contract suite with scored phase selected
+        run: PERPETUAL_ALPHA_PHASE=pa python -m pytest -q
 
   live-testnet-readonly:
     # Best-effort diagnostic: public market endpoints only, no account or keys.
