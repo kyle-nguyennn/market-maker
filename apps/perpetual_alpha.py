@@ -28,12 +28,10 @@ def check_testnet(client: HyperliquidVenueClient, adapter: HyperliquidMarketAdap
         raise RuntimeError(f"{coin} not present in par metadata")
 
     book = client.query_l2_book(instrument)
-    levels = book["levels"]
-    bid = levels[0][0]["px"] if levels[0] else None
-    ask = levels[1][0]["px"] if levels[1] else None
     ctxs = client.query_meta_and_asset_contexts()
     ctx_names = [item["name"] for item in ctxs[0]["universe"]]
     context = ctxs[1][ctx_names.index(coin)]
+    market_state = adapter.from_sdk_l2_snapshot(book, asset_ctx=context)
 
     account = client.query_account_state(team_wallet)
     spot_balances = account["spot"].get("balances", [])
@@ -45,7 +43,8 @@ def check_testnet(client: HyperliquidVenueClient, adapter: HyperliquidMarketAdap
 
     print(f"Network: testnet; dex: {client.config.dex}; market: {coin}")
     print(f"Market size decimals: {markets[coin]['szDecimals']}")
-    print(f"L2 best bid / ask: {bid} / {ask}")
+    print(f"L2 best bid / ask: {market_state.best_bid} / {market_state.best_ask}")
+    print(f"Internal MarketState valid: {market_state.is_valid}")
     print(f"Oracle / mark: {context.get('oraclePx')} / {context.get('markPx')}")
     print(f"{client.config.collateral} spot collateral: {collateral}")
     print(f"Open par positions / orders: {len(positions)} / {len(account['open_orders'])}")
