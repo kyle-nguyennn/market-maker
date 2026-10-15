@@ -219,7 +219,7 @@ When pausing or handing work off again, append:
 **Branch:** `feat/perpetual-alpha-order-risk-quoter`  
 **PR:** [#6 (draft)](https://github.com/kyle-nguyennn/market-maker/pull/6)  
 **Last code increment:** `f4f339f2f1994272f1a3c36fd6b099e580fb80ef` (scoped read-only capacity query test).  
-**Previously completed all-code green CI:** [run 38716722883](https://github.com/kyle-nguyennn/market-maker/actions/runs/38716722883), **122 passed** with the default `par` selection and **122 passed** with `PERPETUAL_ALPHA_DEX=pa`. The subsequent activeAssetData-query increment requires its own CI verification.
+**Latest all-code green CI:** [run 38716874167](https://github.com/kyle-nguyennn/market-maker/actions/runs/38716874167), **123 passed** with the default `par` selection and **123 passed** with `PERPETUAL_ALPHA_DEX=pa`. SDK testnet read-only probe jobs were skipped because this was a pull-request run.
 
 ### Completed in this continuation
 
