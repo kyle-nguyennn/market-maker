@@ -15,11 +15,11 @@ def _environment(dex: str) -> dict[str, str]:
         "PERPETUAL_ALPHA_PAR_NETWORK": "testnet",
         "PERPETUAL_ALPHA_PAR_API_URL": "https://api.hyperliquid-testnet.xyz",
         "PERPETUAL_ALPHA_PAR_WS_URL": "wss://api.hyperliquid-testnet.xyz/ws",
-        "    "PERPETUAL_ALPHA_PAR_COLLATERAL": "USDPR",
+        "PERPETUAL_ALPHA_PAR_COLLATERAL": "USDPR",
         "PERPETUAL_ALPHA_PA_NETWORK": "testnet",
         "PERPETUAL_ALPHA_PA_API_URL": "https://api.hyperliquid-testnet.xyz",
         "PERPETUAL_ALPHA_PA_WS_URL": "wss://api.hyperliquid-testnet.xyz/ws",
-        "    "PERPETUAL_ALPHA_PA_COLLATERAL": "USDP",
+        "PERPETUAL_ALPHA_PA_COLLATERAL": "USDP",
         "PERPETUAL_ALPHA_PA_ALLOW_TRADING": "false",
     }
 
@@ -42,9 +42,19 @@ def test_dex_resolves_all_routing_fields(
     assert config.api_url == url
     assert config.ws_url == ws
     assert config.collateral == collateral
-    assert config.dex == dex
     assert config.venue_symbol("BTC") == expected_symbol
     assert not config.allow_live_trading
+
+
+
+def test_only_dex_identifies_the_selected_market():
+    from dataclasses import fields
+
+    config = HyperliquidVenueConfig.from_environment(environ=_environment("pa"))
+    names = {field.name for field in fields(config)}
+    assert "dex" in names
+    assert "phase" not in names
+    assert config.dex == "pa"
 
 
 def test_explicit_dex_overrides_environment_selector():
