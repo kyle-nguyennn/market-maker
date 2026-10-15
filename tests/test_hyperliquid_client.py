@@ -4,12 +4,12 @@ Mocks emulate SDK calls; these tests NEVER access testnet or send real orders.
 """
 from __future__ import annotations
 
-import sys
 from decimal import Decimal
-from types import ModuleType, SimpleNamespace
+from types import SimpleNamespace
 
 import pytest
 
+from exchanges.hyperliquid import client as venue_client
 from exchanges.hyperliquid.client import HyperliquidVenueClient, _sdk_float
 from exchanges.hyperliquid.config import HyperliquidVenueConfig
 from exchanges.hyperliquid.types import OrderSide, TimeInForce, VenueOrderRequest
@@ -118,19 +118,10 @@ def sdk(monkeypatch):
             self.calls.append(("leverage", leverage, symbol, is_cross))
             return {"status": "ok"}
 
-    def module(name, **items):
-        obj = ModuleType(name)
-        for key, value in items.items():
-            setattr(obj, key, value)
-        monkeypatch.setitem(sys.modules, name, obj)
-        return obj
-
-    module("hyperliquid", __path__=[])
-    module("hyperliquid.info", Info=FakeInfo)
-    module("hyperliquid.exchange", Exchange=FakeExchange)
-    module("hyperliquid.utils", __path__=[])
-    module("hyperliquid.utils.types", Cloid=FakeCloid)
-    module("eth_account", Account=SimpleNamespace(
+    monkeypatch.setattr(venue_client, "Info", FakeInfo)
+    monkeypatch.setattr(venue_client, "Exchange", FakeExchange)
+    monkeypatch.setattr(venue_client, "Cloid", FakeCloid)
+    monkeypatch.setattr(venue_client, "Account", SimpleNamespace(
         from_key=lambda key: SimpleNamespace(address=AGENT)
     ))
     return FakeInfo, FakeExchange
@@ -247,7 +238,7 @@ def test_cancel_uses_oid_or_cloid_and_checks_nested_result(sdk):
         client.cancel_order("BTC", order_id=42)
 
 
-def test_market_scope_and_credentials_are_hard_guarded(sdk):
+def test_market_scope_and_credentials_are_hard_guarded(sdk, monkeypatch):
     with pytest.raises(ValueError, match="testnet"):
         HyperliquidVenueClient(HyperliquidVenueConfig(api_url="https://api.hyperliquid.xyz"))
     with pytest.raises(ValueError, match="par dex"):
@@ -257,8 +248,9 @@ def test_market_scope_and_credentials_are_hard_guarded(sdk):
         client.connect_exchange(team_wallet="bad", api_private_key="secret")
     with pytest.raises(ValueError, match="team's master"):
         # Set fake agent address to team address before authorizing.
-        import eth_account
-        eth_account.Account.from_key = lambda _: SimpleNamespace(address=TEAM)
+        monkeypatch.setattr(venue_client, "Account", SimpleNamespace(
+            from_key=lambda _: SimpleNamespace(address=TEAM)
+        ))
         client.connect_exchange(team_wallet=TEAM, api_private_key="secret")
 
 

@@ -4,6 +4,11 @@ import re
 from decimal import Decimal, InvalidOperation
 from typing import Any, Callable
 
+from eth_account import Account
+from hyperliquid.exchange import Exchange
+from hyperliquid.info import Info
+from hyperliquid.utils.types import Cloid
+
 from .config import HyperliquidVenueConfig
 from .types import OrderSide, VenueOrderRequest, VenueOrderResult
 
@@ -82,8 +87,6 @@ class HyperliquidVenueClient:
     def connect_info(self) -> None:
         """Read-only SDK; skip spawning a WebSocket thread."""
         if self._info is None:
-            from hyperliquid.info import Info
-
             self._info = Info(
                 self.config.api_url, skip_ws=True, perp_dexs=[self.config.dex]
             )
@@ -147,7 +150,6 @@ class HyperliquidVenueClient:
     def _cloid(raw: str | None) -> Any:
         if raw is None or not _CLOID.fullmatch(raw):
             raise ValueError("client_order_id must be 0x followed by 32 hex characters")
-        from hyperliquid.utils.types import Cloid
 
         return Cloid.from_str(raw)
 
@@ -156,8 +158,6 @@ class HyperliquidVenueClient:
         wallet = _team_address(team_wallet)
         if not api_private_key:
             raise ValueError("API wallet private key is required")
-        from eth_account import Account
-        from hyperliquid.exchange import Exchange
 
         agent = Account.from_key(api_private_key)
         if agent.address.lower() == wallet.lower():
@@ -235,8 +235,6 @@ class HyperliquidVenueClient:
     def connect_stream(self) -> None:
         """Create SDK-managed WebSocket independently of the REST client."""
         if self._ws_info is None:
-            from hyperliquid.info import Info
-
             self._ws_info = Info(
                 self.config.api_url, skip_ws=False, perp_dexs=[self.config.dex]
             )
