@@ -1,0 +1,10 @@
+# Core environment. Create from the repository root.
+# For venue-specific installs, use environment.<exchange>.yml instead.
+name: market-maker
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - "-r requirements/common.txt"

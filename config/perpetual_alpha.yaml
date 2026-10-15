@@ -1,0 +1,38 @@
+venue:
+  type: hyperliquid
+  network: testnet
+  api_url: https://api.hyperliquid-testnet.xyz
+  ws_url: wss://api.hyperliquid-testnet.xyz/ws
+  dex: par
+  collateral: USDPR
+  sdk_version: "0.24.0"
+
+account:
+  # Never commit wallet private keys.
+  team_wallet_env: PERPETUAL_ALPHA_TEAM_WALLET
+  api_private_key_env: PERPETUAL_ALPHA_API_PRIVATE_KEY
+
+markets:
+  - par:BTC
+  - par:ETH
+  - par:HYPE
+  - par:SP500
+  - par:EWY
+  - par:EWJ
+  - par:BRENT
+  - par:GOLD
+  - par:USDEUR
+  - par:USDJPY
+
+execution:
+  default_tif: Alo
+  one_order_per_side: true
+
+risk:
+  # Deliberately placeholders until practice collateral and account limits
+  # are confirmed. Do not invent live risk limits.
+  max_abs_position: null
+  max_order_notional: null
+  max_abs_notional: null
+  max_drawdown: null
+  max_market_data_age_ms: 2000
