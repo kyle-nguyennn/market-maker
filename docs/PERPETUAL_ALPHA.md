@@ -90,7 +90,7 @@ To add Hyperliquid to an existing `market-maker` Conda environment:
 conda env update --format environment-yaml -n market-maker -f environment.hyperliquid.yml
 ```
 
-## Current scope: DEX-aware SDK connectivity, no live order validation yet
+## SDK connectivity and one-order practice smoke (no automated live quoting)
 
 The Hyperliquid client now uses the official SDK 0.24.0 and supports:
 
@@ -175,14 +175,15 @@ with HyperliquidMarketSpec from the actual market metadata.
 1. Confirm read-only pa metadata and the team's scored USDP funding. On
    2026-10-15 the testnet pa metadata returned only BTC/ETH/HYPE (3 of 10
    announced markets); re-check deployment for all ten before launch.
-2. Confirm that the API wallet remains authorized using the Hyperliquid
-   interface, then exercise one deliberately tiny post-only order and cancel
-   during the practice window. **No real orders were placed during this change.**
+2. PR #5 validated one deliberately tiny `par:BTC` resting post-only order and
+   cancel. This does **not** validate fills, continuous operation or scored `pa`
+   authorization. Independently verify revocation of the previously exposed key.
 3. Normalize streaming SDK messages into the Decimal market/account models,
    handle history deduplication, reconnect/resubscribe/resync, and persist
    replayable market data. REST L2/asset-context normalization is already done.
-4. Implement OrderManager.reconcile(), stale-data kill switch and hard risk
-   limits before the quoter can generate signed traffic.
+4. Integrate the new pure OrderManager/risk/gateway into an event loop with
+   durable journaling, SDK order/fill event normalization, capacity parsing and
+   real account-mode validation. The default gateway remains dry-run.
 5. Add kill-switch tests, network interruption tests, and paper-trading replay
    before deploying an unattended process.
 
@@ -202,3 +203,49 @@ so scored connectivity is **not** scored trading readiness.
 Do not treat DEX discovery as proof of team USDP funding or trading readiness.
 See `notes/20261015_perpetual_alpha_competition_rules.md` for the
 organizer's complete rules and the remaining engineering gaps.
+
+
+## Order/risk increment (draft PR #6, October 15, 2026)
+
+The branch `feat/perpetual-alpha-order-risk-quoter` now contains:
+
+- `model/order.py`: venue-independent `OrderEvent`, `PlaceAction`,
+  `CancelAction`; cumulative-size conventions and a nonterminal cancel ACK.
+- `execution/order_manager.py`: deterministic, fail-closed order slots,
+  cancel/wait/replace, 128-bit CLOIDs, late/duplicate cumulative update
+  handling, explicit startup resynchronization and unknown-state quarantine.
+  `reconcile()` **reserves** proposed actions but never calls the SDK.
+- `risk/risk_manager.py`: post-only price collar, market age, per-order
+  min/max notionals, simultaneous all-fill inventory bounds, gross/net
+  notionals, verified account+margin+capacity, absolute drawdown kill latch.
+  `max_drawdown` is in collateral currency units, NOT percent.
+- `execution/safe_gateway.py`: a dry-run-by-default dispatch boundary.
+  Live mock testing requires separate `live_enabled` and
+  `operator_authorized`; actual scored-DEX signing is still guarded by
+  `PERPETUAL_ALPHA_PA_ALLOW_TRADING=false`. It rechecks venue-quantized
+  price/size and derives all fillable orders from its OrderManager, including
+  pending cancels, immediately before any potential SDK call.
+- `portfolio/accounting.py`: idempotent trade fill-ID application, including
+  maker rebates. Its single-instrument cash/position proxy is **not** a
+  substitute for verified perpetual-margin account equity.
+
+**Not yet integrated / unsafe for unattended trading:** SDK `orderUpdates`
+and `userFills` shape normalization; a race-aware REST/WS recovery anchor;
+persistent action journal and CLOID counter; `activeAssetData` capacity and
+Standard/Unified account-mode mapping; cancel retry/backoff/API budgets;
+emergency-cancel orchestration on stale data; P1 strategy and replay runner.
+An accepted cancel response is never interpreted as proof of a closed order.
+All `null` hard limits in `config/perpetual_alpha.yaml` still prevent
+successful new-order risk checks, as intended.
+
+Local offline validation:
+
+```bash
+python -m pytest -q tests/test_order_manager.py tests/test_risk_manager.py \
+  tests/test_safe_execution.py tests/test_portfolio_fills.py
+PERPETUAL_ALPHA_DEX=pa python -m pytest -q
+```
+
+A passing mocked send-path test does not authorize live execution. Refer to
+`notes/20261015_perpetual_alpha_order_risk_quoter_handoff.md` for the remaining
+scored-pa go/no-go gates.
