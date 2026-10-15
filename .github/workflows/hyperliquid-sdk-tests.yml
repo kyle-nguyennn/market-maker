@@ -2,12 +2,14 @@ name: Hyperliquid SDK contract tests
 
 on:
   push:
-    branches: [perpetual-alpha-scaffold]
+    branches: [perpetual-alpha-scaffold, feat/perpetual-alpha-phase-config]
     paths:
       - "exchanges/hyperliquid/**"
       - "market_handler/**"
       - "model/**"
-      - "apps/perpetual_alpha.py"
+      - "apps/**"
+      - "config/**"
+      - ".env.template"
       - "tests/**"
       - "requirements/**"
       - "environment*.yml"
@@ -80,4 +82,36 @@ jobs:
           print("MarketState:", state.instrument, state.best_bid, state.best_ask,
                 state.oracle_price, state.mark_price, "valid=", state.is_valid)
           print("No wallet queried; no signed request made.")
+          PY
+
+  scored-pa-discovery-readonly:
+    # Check whether the organizer's pa DEX is actually deployed on mainnet.
+    # No wallets, API keys, balances or trading actions used.
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install SDK
+        run: python -m pip install -r requirements/hyperliquid.txt
+      - name: Probe pa DEX on Hyperliquid mainnet and testnet (read only)
+        run: |
+          python - <<'PY'
+          from hyperliquid.info import Info
+          for network, url in (
+              ("mainnet", "https://api.hyperliquid.xyz"),
+              ("testnet", "https://api.hyperliquid-testnet.xyz"),
+          ):
+              try:
+                  info = Info(url, skip_ws=True)
+                  meta = info.meta(dex="pa")
+                  names = [entry["name"] for entry in meta.get("universe", [])]
+                  print(f"DISCOVERY pa network={network} markets={len(names)} symbols={names}", flush=True)
+              except Exception as exc:
+                  print(f"DISCOVERY pa network={network} error={type(exc).__name__}: {exc}", flush=True)
+          print("No wallet queried; no signed actions performed.")
           PY
