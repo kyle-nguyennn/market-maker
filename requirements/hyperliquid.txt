@@ -1,3 +1,4 @@
-# Perpetual Alpha / Hyperliquid venue dependencies
-# Keep venue-specific dependencies out of the core framework.
+# Perpetual Alpha / Hyperliquid venue dependencies.
+# Include the same core dependencies as environment.yml / core-only installs.
+-r common.txt
 hyperliquid-python-sdk==0.24.0
