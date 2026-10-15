@@ -169,9 +169,9 @@ with HyperliquidMarketSpec from the actual market metadata.
 2. Confirm that the API wallet remains authorized using the Hyperliquid
    interface, then exercise one deliberately tiny post-only order and cancel
    during the practice window. **No real orders were placed during this change.**
-3. Normalize SDK WebSocket messages into the Decimal market/account models,
+3. Normalize streaming SDK messages into the Decimal market/account models,
    handle history deduplication, reconnect/resubscribe/resync, and persist
-   replayable market data.
+   replayable market data. REST L2/asset-context normalization is already done.
 4. Implement OrderManager.reconcile(), stale-data kill switch and hard risk
    limits before the quoter can generate signed traffic.
 5. Add kill-switch tests, network interruption tests, and paper-trading replay
