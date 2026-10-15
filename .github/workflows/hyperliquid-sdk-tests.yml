@@ -2,7 +2,7 @@ name: Hyperliquid SDK contract tests
 
 on:
   push:
-    branches: [perpetual-alpha-scaffold, feat/perpetual-alpha-phase-config]
+    branches: [perpetual-alpha-scaffold, feat/perpetual-alpha-phase-config, feat/par-first-order-smoke]
     paths:
       - "exchanges/hyperliquid/**"
       - "market_handler/**"
