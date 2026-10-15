@@ -2,11 +2,37 @@
 
 **Project:** market-maker / Perpetual Alpha  
 **Team:** Auror  
-**Recorded:** 2026-10-15 (SGT)  
+**Recorded / updated:** 2026-10-15 (SGT)  
 **Primary source:** Organizers' Discord \`#ask-anything\` screenshots provided on 2026-10-15, including Giorgio's 2026-10-13 responses.  
 **Guide:** https://perpetual-alpha26.github.io/docs/
 
 > **Source convention:** "**Confirmed**" below means explicitly stated in the shared organizer screenshots, not independently verified against a later rule revision. "**Observed**" means checked via our own SDK diagnostic. "**Recommendation**" is an engineering inference, not a competition rule. Verify operational details against the latest organizer messages before switching to the scored environment.
+
+## Execution milestone — first authenticated practice order-and-cancel (2026-10-15)
+
+**Status: VERIFIED from the operator's Codespaces terminal screenshot**, following a local run of \`apps/par_first_order.py\` on branch \`feat/par-first-order-smoke\` ([draft PR #5](https://github.com/kyle-nguyennn/market-maker/pull/5)). This is an actual testnet exchange result, not an SDK mock or a dry-run. No credentials or private keys are recorded here.
+
+| Item | Observed result |
+| --- | --- |
+| Venue | Hyperliquid **testnet**, practice DEX **\`par\`** |
+| Market | \`par:BTC\` |
+| Order | **BUY**, post-only limit (**ALO**) |
+| Limit price | **80,835 USDPR/BTC** |
+| Quantity | **0.0002 BTC** |
+| Notional | **16.17 USDPR** |
+| Submission response | **\`resting\`**, venue order ID returned |
+| Cancellation | **CANCEL ACK: success**, using client order ID (CLOID) |
+| Post-trade order check | **0 open \`par:BTC\` orders** |
+| Post-trade position check | **0 \`par:BTC\` position** |
+| Script result | **PASS: authenticated order, cancellation and flat-position verification** |
+
+**What this proves:** API-agent signing with the team's trading account, internal order-intent to venue serialization, real \`par:BTC\` post-only order acceptance, cancellation by CLOID, and subsequent open-order/position REST checks all worked in this execution.
+
+**What this does NOT prove:** fill/partial-fill handling, WebSocket event delivery or resynchronization, reliability after a real network outage, multiple concurrent orders, continuous quoting, emergency flattening, risk enforcement, or any authenticated order on scored \`pa\`. A resting order followed by successful cancellation is not a test of the fill path.
+
+**Security qualification:** the execution command included the user's \`--ack-key-rotated\` acknowledgement. The terminal output does not independently verify the exposed old API key was revoked; continue to treat revocation as an operational prerequisite.
+
+**Engineering next step:** implement \`OrderManager.reconcile()\` and enforce hard risk limits before introducing an automated quote loop. Keep this milestone separate from the scored \`pa\` environment's deployment/funding validation.
 
 ## TL;DR / immediate implications
 
@@ -164,18 +190,18 @@ The following reflects the **SDK/read-only diagnostics achieved by 15 Oct**, not
 | **SDK network** | Config and safety guard restrict use to testnet | Confirm actual live network/API/WS endpoints; explicit opt-in for signed live actions |
 | **Historical data** | Can query practice snapshots; no comprehensive replay pipeline verified | Build collection, storage, historical references and cold-start behavior |
 | **Funding** | Running estimate available from asset contexts | Query \`fundingHistory\`, reconcile settled funding and model expected carry |
-| **Execution** | SDK order/cancel methods implemented; offline contract tests passed; **no real order/cancel yet verified** | Test tiny deliberately authorized ALO order, confirm resting/partial/full fill and cancel/flat state |
+| **Execution** | **Real signed `par:BTC` ALO resting-order acceptance, CLOID cancel and flat-position verification succeeded 2026-10-15**; partial/full fills not validated | Implement fill/partial-fill tracking, order reconciliation, and safe repeated quoting |
 | **Risk** | Basic checks/interfaces; hard portfolio limits and reconciliation not fully wired | Exposure, notional, leverage, drawdown, stale-feed kill switch and request-budget safeguards |
 | **Account sizing** | Practice state snapshots queried | Use \`activeAssetData.availableToTrade\` / \`maxTradeSzs\`, per-side and per-market |
 | **Operational resilience** | SDK WebSocket subscription support | Add reconnect + resubscribe + book/account snapshot resync, event dedup and audit logs |
 
-**Observed:** A read-only diagnostic returned **1,000,000 USDPR** for the correct Auror team wallet and confirmed \`par:BTC\` market-data normalization; **no signed order was placed in that test**. Do not record any private key in this note.
+**Observed (earlier read-only diagnostic):** The funded Auror team wallet returned **1,000,000 USDPR** and valid \`par:BTC\` market-data normalization; no signed order was placed *in that earlier diagnostic*. The separate authenticated smoke test subsequently succeeded, as documented above. Do not record any private key in this note.
 
 ### Highest-priority tasks before 2026-10-19
 
 1. **P0 — Environment switch:** verify \`pa\` deployment, correct network/REST/WS URL, supported symbols/precision, collateral asset and the team wallet's \`USDP\` funding; implement explicit practice/live profiles with a fail-closed switch.
 2. **P0 — Security:** ensure the previously screen-exposed **API agent key has been revoked/replaced** before enabling signed operations; never commit credentials. Confirm the new API wallet is approved for the correct account and target environment.
-3. **P0 — Order lifecycle:** use a tiny risk-bounded post-only practice order and cancellation, observe order statuses, fills and account position effects. Verify sub-$10 *full close* behavior only if a genuine dust position exists; do not manufacture risk solely to test the exception.
+3. **P0 — Order lifecycle:** **first signed practice ALO order, CLOID cancellation, and flat-position verification completed on 2026-10-15.** Next implement persistent order/fill reconciliation, partial-fill tracking and safe resynchronization. Verify sub-$10 *full close* behavior only if a genuine dust position exists; do not manufacture risk solely to test the exception.
 4. **P0 — Risk circuit breakers:** implement strict max order notional, gross/net inventory, drawdown, leverage, stale-data cutoff and a kill switch. No unattended trading until these work.
 5. **P1 — Quoting/reconciliation:** maintain durable client order IDs, reconcile fills/cancels/positions after disruptions and handle nested per-order API errors.
 6. **P1 — Rate-limit accounting:** throttle requests per address and mode; build a bounded, hysteresis-based quote refresh loop.
