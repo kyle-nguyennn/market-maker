@@ -71,13 +71,24 @@ objects to integer cents/ticks only at its venue boundary.
 
 ## Hyperliquid-specific dependencies
 
-Install only when building/running the Hyperliquid venue path:
+Install the **core + Hyperliquid** Conda environment from the repository root:
 
 ```bash
-pip install -r requirements/hyperliquid.txt
+conda env create -f environment.hyperliquid.yml
+conda activate market-maker
 ```
 
-The file currently pins `hyperliquid-python-sdk==0.24.0`, matching the competition guide. Core model/strategy code does not depend on the SDK.
+Use `environment.yml` instead for the **core-only** environment without
+exchange SDKs. The Hyperliquid environment installs the shared packages via
+`requirements/common.txt`, along with `hyperliquid-python-sdk==0.24.0`
+from `requirements/hyperliquid.txt`, matching the competition guide.
+Core model/strategy code remains independent of the SDK.
+
+To add Hyperliquid to an existing `market-maker` Conda environment:
+
+```bash
+conda env update -n market-maker -f environment.hyperliquid.yml
+```
 
 ## Current scope
 
