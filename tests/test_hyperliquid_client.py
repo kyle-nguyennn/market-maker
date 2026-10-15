@@ -241,7 +241,7 @@ def test_cancel_uses_oid_or_cloid_and_checks_nested_result(sdk):
 def test_market_scope_and_credentials_are_hard_guarded(sdk, monkeypatch):
     with pytest.raises(ValueError, match="testnet"):
         HyperliquidVenueClient(HyperliquidVenueConfig(api_url="https://api.hyperliquid.xyz"))
-    with pytest.raises(ValueError, match="par dex"):
+    with pytest.raises(ValueError, match="invalid dex"):
         HyperliquidVenueClient(HyperliquidVenueConfig(dex="xyz"))
     client = HyperliquidVenueClient()
     with pytest.raises(ValueError, match="team_wallet"):
