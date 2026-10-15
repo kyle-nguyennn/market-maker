@@ -90,19 +90,93 @@ To add Hyperliquid to an existing `market-maker` Conda environment:
 conda env update --format environment-yaml -n market-maker -f environment.hyperliquid.yml
 ```
 
-## Current scope
+## Current scope: SDK integrated, no live order validation yet
 
-The scaffold is intentionally **read-only** before competition collateral is
-funded. Signed actions remain unimplemented.
+The Hyperliquid client now uses the official SDK 0.24.0 and supports:
 
-## P0 implementation order
+- REST: par market specifications, par asset contexts (mark/oracle/funding),
+  par L2 books/mids, USDPR spot collateral, par positions/open orders,
+  par-filtered fills and individual order status.
+- WebSocket: l2Book, bbo, trades, activeAssetCtx, userFills, orderUpdates,
+  userEvents and userFundings. These subscriptions return raw SDK messages.
+- Signed operations: one GTC/ALO/IOC limit order, cancel by OID/client order
+  ID, and explicit leverage updates. These cannot run without
+  connect_exchange() using the separately authorized API wallet.
+- All order and cancellation results validate the nested status, including
+  status=ok responses containing a per-operation error.
+- Testnet and dex selection are hardcoded guards against accidental trading
+  on another network or on another dex. Keys never appear in files or logs.
 
-1. Wire official Hyperliquid SDK 0.24.0 into `HyperliquidVenueClient`.
-2. Query `meta`, `metaAndAssetCtxs`, `l2Book`, balance, positions and orders.
-3. Add WebSocket subscriptions for book, trades, reference-price context and
-   account events.
-4. Normalize those messages into `model.MarketState`.
-5. Add structured market-data recording and reconnect/resync.
-6. After funding: approve an API wallet and wire signed order/cancel actions.
-7. Convert internal `OrderIntent` through the adapter and validate one tiny
-   ALO order end-to-end before plugging in a live quoter.
+The SDK's Info.meta_and_asset_ctxs() convenience method in 0.24.0 defaults
+to the native dex; the client explicitly calls Info.post("/info", ...) with
+dex="par" instead. For authenticated trading, Exchange receives both
+perp_dexs=["par"] and account_address=TEAM_WALLET.
+
+### Install and verify REST connectivity (no order placement)
+
+From the repository root:
+
+~~~bash
+conda env create --format environment-yaml -f environment.hyperliquid.yml
+conda activate market-maker
+python -m pytest -q
+export PERPETUAL_ALPHA_TEAM_WALLET=0x<your-team-public-address>
+python -m apps.perpetual_alpha --check --instrument BTC
+~~~
+
+The diagnostic queries the public par metadata, l2Book and asset contexts,
+and reads the wallet's spot balance, par positions and par orders. It has no
+order placement, cancellation or leverage commands.
+
+### Example: enable signed operations programmatically
+
+Set the *separately approved agent* key in your local secret store or process
+environment. Do not use the master/team wallet private key. Do not check in
+a .env file containing secrets.
+
+~~~python
+import os
+from exchanges.hyperliquid.client import HyperliquidVenueClient
+from exchanges.hyperliquid.types import OrderSide, TimeInForce, VenueOrderRequest
+
+client = HyperliquidVenueClient()
+client.connect_exchange(
+    team_wallet=os.environ["PERPETUAL_ALPHA_TEAM_WALLET"],
+    api_private_key=os.environ["PERPETUAL_ALPHA_API_PRIVATE_KEY"],
+)
+# Exchange is now configured, but nothing has been sent.
+# Inspect query_meta(), query_l2_book(), account balances and risks first.
+# For example, AFTER deliberate authorization to trade:
+# request = VenueOrderRequest(
+#     instrument="par:BTC", side=OrderSide.BUY,
+#     price="60000", size="0.0002", tif=TimeInForce.ALO,
+#     client_order_id="0x" + "0" * 31 + "1",
+# )
+# result = client.place_order(request)
+# if result.status == "resting":
+#     client.cancel_order("BTC", order_id=result.order_id)
+~~~
+
+Market-facing requests here contain strings. Decimal sizing, quantization
+and side-specific price rounding remain the adapter's responsibility:
+build an internal OrderIntent and call HyperliquidMarketAdapter.to_venue_order()
+with HyperliquidMarketSpec from the actual market metadata.
+
+### Open integration tasks
+
+1. Confirm live REST smoke output on the funded account; check that USDPR is
+   present and the par metadata lists the ten competition markets.
+2. Confirm that the API wallet remains authorized using the Hyperliquid
+   interface, then exercise one deliberately tiny post-only order and cancel
+   during the practice window. **No real orders were placed during this change.**
+3. Normalize SDK WebSocket messages into the Decimal market/account models,
+   handle history deduplication, reconnect/resubscribe/resync, and persist
+   replayable market data.
+4. Implement OrderManager.reconcile(), stale-data kill switch and hard risk
+   limits before the quoter can generate signed traffic.
+5. Add kill-switch tests, network interruption tests, and paper-trading replay
+   before deploying an unattended process.
+
+The SDK's own WebSocket manager is not a production-grade replacement for
+explicit reconnect, snapshot resync, event deduplication and stale-feed
+monitoring. Do not run an unattended trading strategy yet.
