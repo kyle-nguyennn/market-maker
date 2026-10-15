@@ -10,7 +10,7 @@ from model.order import ExecutionStatus, OrderIntent, Side
 @pytest.fixture(autouse=True)
 def _default_practice_profile(monkeypatch):
     # Keep legacy par model tests independent of the user's selected .env.
-    monkeypatch.setenv("PERPETUAL_ALPHA_PHASE", "par")
+    monkeypatch.setenv("PERPETUAL_ALPHA_DEX", "par")
 
 
 def test_hyperliquid_snapshot_normalizes_to_internal_decimal_model() -> None:
