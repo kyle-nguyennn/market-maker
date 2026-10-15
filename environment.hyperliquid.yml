@@ -1,0 +1,10 @@
+# Core + Hyperliquid (Perpetual Alpha) environment.
+# requirements/hyperliquid.txt includes all common dependencies.
+name: market-maker
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - "-r requirements/hyperliquid.txt"
