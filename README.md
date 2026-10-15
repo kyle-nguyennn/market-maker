@@ -81,8 +81,8 @@ python -m apps.perpetual_alpha --check --phase pa
 | Setting | Practice | Scored |
 | --- | --- | --- |
 | Phase selector | par | pa |
-| Network | Hyperliquid testnet | Hyperliquid mainnet |
-| REST host | api.hyperliquid-testnet.xyz | api.hyperliquid.xyz |
+| Network | Hyperliquid testnet | Hyperliquid testnet |
+| REST host | api.hyperliquid-testnet.xyz | api.hyperliquid-testnet.xyz |
 | DEX prefix | par: | pa: |
 | Collateral | USDPR | USDP |
 
@@ -96,7 +96,7 @@ The diagnostics are read-only: no API private key is loaded or required.
 PERPETUAL_ALPHA_PA_ALLOW_TRADING=false blocks signed pa operations even when an
 agent key is available. Do **not** enable pa trading until its deployment,
 endpoint, account funding, agent approval, risk limits and execution tests have
-been verified. The approved agent for testnet is not presumed valid on mainnet.
+been verified. Confirm the approved agent can trade on the selected DEX; the same testnet network does not imply separate scored collateral is funded.
 
 Network connectivity alone does not establish that a team's scored USDP
 balance is funded. If the read-only pa diagnostic reports no USDP, contact
@@ -104,3 +104,8 @@ the organizers and do not attempt trading.
 
 **Security:** Never commit .env or private keys. Revoke any API key previously
 exposed in a screenshot and replace it with a fresh approved agent key.
+
+**Live API discovery on 2026-10-15:** querying the testnet API with dex=pa returned
+pa:BTC, pa:ETH and pa:HYPE. Mainnet dex=pa returned HTTP 500. The organizer's
+announced ten-asset universe was not yet fully visible on pa; re-check
+metadata before the scored phase begins.
