@@ -58,10 +58,10 @@ objects to integer cents/ticks only at its venue boundary.
 
 ## Competition-specific invariants
 
-- Both phases currently use Hyperliquid **testnet**.
+- Both DEXs currently use Hyperliquid **testnet**.
 - Practice DEX: `par`, collateral `USDPR`, e.g. `par:BTC`.
 - Scored DEX: `pa`, collateral `USDP`, e.g. `pa:BTC`.
-- Select the whole profile via `.env` (`PERPETUAL_ALPHA_PHASE=par|pa`) or the CLI `--phase` flag.
+- Select the whole profile via `.env` (`PERPETUAL_ALPHA_DEX=par|pa`) or the CLI `--dex` flag.
 - Internal market names are unqualified, e.g. `BTC`
 - Market-wide and position queries must explicitly select the configured dex (`par` or `pa`)
 - Team wallet is used for account queries
@@ -90,7 +90,7 @@ To add Hyperliquid to an existing `market-maker` Conda environment:
 conda env update --format environment-yaml -n market-maker -f environment.hyperliquid.yml
 ```
 
-## Current scope: phase-aware SDK connectivity, no live order validation yet
+## Current scope: DEX-aware SDK connectivity, no live order validation yet
 
 The Hyperliquid client now uses the official SDK 0.24.0 and supports:
 
@@ -123,10 +123,10 @@ conda env create --format environment-yaml -f environment.hyperliquid.yml
 conda activate market-maker
 python -m pytest -q
 cp .env.template .env
-# Select PERPETUAL_ALPHA_PHASE=par or pa in .env
+# Select PERPETUAL_ALPHA_DEX=par or pa in .env
 python -m apps.perpetual_alpha --check --instrument BTC
 # Temporarily override the selection:
-python -m apps.perpetual_alpha --check --phase pa --instrument BTC
+python -m apps.perpetual_alpha --check --dex pa --instrument BTC
 ~~~
 
 The diagnostic queries the **selected** DEX metadata, L2 and asset contexts,
@@ -195,7 +195,7 @@ monitoring. Do not run an unattended trading strategy yet.
 A read-only SDK query to `https://api.hyperliquid-testnet.xyz/info`
 with `dex=pa` returned `pa:BTC`, `pa:ETH`, and `pa:HYPE`.
 The same query against `https://api.hyperliquid.xyz/info` returned
-HTTP 500. **Both configured phases therefore use testnet for now.**
+HTTP 500. **Both configured DEXs therefore use testnet for now.**
 The announced seven additional `pa` markets were not visible yet.
 The October 15 SDK L2 probe showed no valid two-sided `pa:BTC` book (mid=None),
 so scored connectivity is **not** scored trading readiness.
