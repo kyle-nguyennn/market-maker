@@ -2,3 +2,4 @@
 # Include the same core dependencies as environment.yml / core-only installs.
 -r common.txt
 hyperliquid-python-sdk==0.24.0
+python-dotenv>=1.0,<2
