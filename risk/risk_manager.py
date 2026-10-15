@@ -62,6 +62,8 @@ class RiskSnapshot:
     margin_mode: str | None
     capacity_buy: Mapping[str, Decimal] | None
     capacity_sell: Mapping[str, Decimal] | None
+    account_id: str | None = None
+    expected_account_id: str | None = None
 
 
 class RiskManager:
@@ -140,6 +142,9 @@ class RiskManager:
             return RiskDecision(False, "risk_config_incomplete")
         if snap.dex != snap.expected_dex:
             return RiskDecision(False, "wrong_dex")
+        if (not snap.account_id or not snap.expected_account_id
+            or snap.account_id.lower() != snap.expected_account_id.lower()):
+            return RiskDecision(False, "wrong_or_unverified_account")
         if (intent.instrument not in snap.allowed_instruments
             or intent.instrument != snap.market.instrument
             or ":" in intent.instrument):
