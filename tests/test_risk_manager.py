@@ -38,7 +38,8 @@ def snap(**overrides):
         allowed_instruments=frozenset({"BTC"}), positions={"BTC": D("0")},
         marks={"BTC": D("100")}, fillable_orders=(),
         account_equity=D("1000"), baseline_equity=D("1000"),
-        margin_mode="standard", capacity_buy={"BTC": D("10")},
+        margin_mode="standard", account_id="0x" + "a" * 40,
+        expected_account_id="0x" + "a" * 40, capacity_buy={"BTC": D("10")},
         capacity_sell={"BTC": D("10")},
     )
     data.update(overrides)
@@ -65,6 +66,7 @@ def test_conservative_bid_and_ask_are_permitted():
     ("invalid", snap(market=market(valid=False)), "crossed_book"),
     ("crossed", snap(market=market(bid="101", ask="100")), "invalid_book"),
     ("wrong dex", snap(dex="pa"), "wrong_dex"),
+    ("wrong account", snap(account_id="0x" + "b" * 40), "wrong_or_unverified_account"),
     ("wrong mode", snap(margin_mode=None), "unknown_margin_mode"),
     ("missing equity", snap(account_equity=None), "unverified_account_equity"),
     ("missing capacity", snap(capacity_buy=None), "capacity_unavailable"),
