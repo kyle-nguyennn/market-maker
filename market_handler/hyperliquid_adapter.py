@@ -31,12 +31,14 @@ class HyperliquidMarketAdapter(BaseMarketAdapter):
     """
 
     def __init__(self, config: HyperliquidVenueConfig | None = None) -> None:
-        self.config = config or HyperliquidVenueConfig()
+        self.config = config or HyperliquidVenueConfig.from_environment()
 
     def to_internal_instrument(self, venue_instrument: str) -> str:
         prefix = f"{self.config.dex}:"
         if venue_instrument.startswith(prefix):
             return venue_instrument[len(prefix):]
+        if ":" in venue_instrument:
+            raise ValueError(f"instrument is not on dex {self.config.dex}: {venue_instrument}")
         return venue_instrument
 
     def to_venue_instrument(self, instrument: str) -> str:
