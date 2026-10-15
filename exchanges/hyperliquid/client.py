@@ -114,6 +114,18 @@ class HyperliquidVenueClient:
     def query_positions(self, team_wallet: str) -> Any:
         return self._read().user_state(_team_address(team_wallet), dex=self.config.dex)
 
+    def query_active_asset_data(self, team_wallet: str, instrument: str) -> Any:
+        """Read user+coin availableToTrade/maxTradeSzs without signing.
+
+        Response is raw SDK JSON. Do not treat availableToTrade notional as
+        base-asset quantity; margin-mode normalization is a separate step.
+        """
+        return self._read().post(
+            "/info",
+            {"type": "activeAssetData", "user": _team_address(team_wallet),
+             "coin": self._symbol(instrument)},
+        )
+
     def query_open_orders(self, team_wallet: str) -> Any:
         return self._read().open_orders(_team_address(team_wallet), dex=self.config.dex)
 
