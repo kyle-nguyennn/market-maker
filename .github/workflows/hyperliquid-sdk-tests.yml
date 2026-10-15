@@ -2,12 +2,12 @@ name: Hyperliquid SDK contract tests
 
 on:
   push:
-    branches: [perpetual-alpha-scaffold]
+    branches: [perpetual-alpha-scaffold, feat/par-first-order-smoke]
     paths:
       - "exchanges/hyperliquid/**"
       - "market_handler/**"
       - "model/**"
-      - "apps/perpetual_alpha.py"
+      - "apps/**"
       - "tests/**"
       - "requirements/**"
       - "environment*.yml"
