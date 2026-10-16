@@ -93,7 +93,7 @@ class HyperliquidMarketDataHandler:
         return state is not None and state.is_valid
 
     def invalidate(self, reason: str = "resync_required") -> None:
-        """Fail closed until an accepted, valid, newer snapshot arrives."""
+        """Fail closed until a fresh, valid snapshot is accepted."""
         if not reason:
             raise ValueError("invalid data reason must be nonempty")
         with self._lock:
@@ -112,9 +112,13 @@ class HyperliquidMarketDataHandler:
         """
         if source not in ("rest", "ws"):
             raise ValueError("unknown L2 source")
-        state = self.adapter.from_sdk_l2_snapshot(book)
-        if state.instrument != self.instrument:
-            raise ValueError("L2 book belongs to a different instrument/DEX")
+        try:
+            state = self.adapter.from_sdk_l2_snapshot(book)
+            if state.instrument != self.instrument:
+                raise ValueError("L2 book belongs to a different instrument/DEX")
+        except Exception:
+            self.invalidate("invalid_book")
+            raise
         if state.timestamp_ms > self._clock_ms() + self.max_future_skew_ms:
             self.invalidate("future_book")
             raise ValueError("L2 book timestamp is in the future")
