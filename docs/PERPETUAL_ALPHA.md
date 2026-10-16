@@ -178,9 +178,10 @@ with HyperliquidMarketSpec from the actual market metadata.
 2. PR #5 validated one deliberately tiny `par:BTC` resting post-only order and
    cancel. This does **not** validate fills, continuous operation or scored `pa`
    authorization. Independently verify revocation of the previously exposed key.
-3. Normalize streaming SDK messages into the Decimal market/account models,
-   handle history deduplication, reconnect/resubscribe/resync, and persist
-   replayable market data. REST L2/asset-context normalization is already done.
+3. L2 REST and WS frames now normalize through validated, typed wire payloads
+   into a stateful, freshness-checked per-market cache. Still needed:
+   automatic reconnect/resubscribe/recovery, durable market-data replay,
+   synchronized mark/oracle/funding contexts, and private order/fill WS events.
 4. Integrate the new pure OrderManager/risk/gateway into an event loop with
    durable journaling, SDK order/fill event normalization, capacity parsing and
    real account-mode validation. The default gateway remains dry-run.
@@ -249,3 +250,59 @@ PERPETUAL_ALPHA_DEX=pa python -m pytest -q
 A passing mocked send-path test does not authorize live execution. Refer to
 `notes/20261015_perpetual_alpha_order_risk_quoter_handoff.md` for the remaining
 scored-pa go/no-go gates.
+
+
+## Read-only L2 market-data cache (October 16, 2026)
+
+The data path is now:
+
+`SDK raw REST dict or WS envelope → HyperliquidL2Snapshot (TypedDict with
+runtime structure validation) → HyperliquidMarketAdapter → immutable Decimal
+MarketState → HyperliquidMarketDataHandler`.
+
+- `exchanges/hyperliquid/types.py`: `HyperliquidL2Snapshot`,
+  `HyperliquidL2BookMessage` and strict wire-shape parsers. SDK price/size
+  remain strings until the adapter converts them to `Decimal`.
+- `HyperliquidVenueClient.query_l2_book("BTC")` returns a validated
+  `HyperliquidL2Snapshot`, not `Any`, and checks the selected DEX symbol.
+- `market_handler/hyperliquid_market_data_handler.py`:
+  `HyperliquidMarketDataHandler` retains **one** market's last immutable
+  snapshot with `.bids`, `.asks`, `.current()`, `.ready`. Create a
+  separate instance per instrument. WS `l2Book` delivers full snapshots,
+  not level diffs. Older exchange timestamps cannot rewind the book;
+  equal-timestamp WS frames take arrival order, and WS takes precedence
+  over REST at an equal timestamp.
+- `start()` subscribes before REST bootstrap; `stop()` invalidates
+  the feed and unsubscribes only that market without closing other
+  subscriptions on the shared SDK connection. Malformed feed callbacks
+  quarantine the book instead of crashing the SDK callback thread.
+  Cached levels remain inspectable while invalid.
+- `current().is_valid` is **required** before any trading decision.
+  It becomes false for empty/crossed/unsorted books, stale/future timestamps,
+  malformed callbacks, or a stopped stream.
+
+Example (read-only, no account or trading key required):
+
+```python
+from exchanges.hyperliquid.client import HyperliquidVenueClient
+from market_handler.hyperliquid_market_data_handler import HyperliquidMarketDataHandler
+
+client = HyperliquidVenueClient()  # selected par or pa profile
+handler = HyperliquidMarketDataHandler(client, "BTC", max_age_ms=2000)
+try:
+    handler.start()  # subscribe + read-only REST L2 bootstrap
+    snapshot = handler.current()
+    if snapshot is not None and snapshot.is_valid:
+        print(snapshot.best_bid, snapshot.best_ask, snapshot.mid)
+finally:
+    handler.stop()  # scoped unsubscribe
+    client.close_stream()
+```
+
+**Not yet production-feed ready:** no automatic WebSocket reconnection /
+resubscription or REST recovery orchestration after a silent disconnect;
+no venue sequence number to prove gap-free WS ordering; no persisted replay;
+no fresh `activeAssetCtx` merge into the cached book; no integration with
+risk-triggered quote cancellation or continuous runner. A stale book blocks
+new placements only when the risk gateway is actually provided this state.
+The read-only cache never submits orders or cancels.
