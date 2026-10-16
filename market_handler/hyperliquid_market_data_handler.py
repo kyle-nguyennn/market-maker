@@ -59,6 +59,7 @@ class HyperliquidMarketDataHandler:
         self._blocked_reason: str | None = "uninitialized"
         self._running = False
         self._subscription_id: int | None = None
+        self._generation = 0  # reject delayed callbacks from prior subscriptions
 
     def current(self) -> MarketState | None:
         """Return a safe read-only view; stale cached levels remain visible but invalid."""
@@ -139,11 +140,11 @@ class HyperliquidMarketDataHandler:
         envelope = parse_l2_book_message(message)
         return self.apply_snapshot(envelope["data"], source="ws")
 
-    def _on_ws_message(self, message: object) -> None:
+    def _on_ws_message(self, message: object, generation: int) -> None:
         # The SDK invokes callbacks on its WS thread; never crash that thread
         # or silently keep quoting using an older apparently-valid book.
         with self._lock:
-            if not self._running:
+            if not self._running or generation != self._generation:
                 return
         try:
             self.handle_ws_message(message)
@@ -169,9 +170,14 @@ class HyperliquidMarketDataHandler:
             if self._running or self._subscription_id is not None:
                 raise RuntimeError("market data handler is already subscribed")
             self._running = True
+            self._generation += 1
+            generation = self._generation
             self._blocked_reason = "awaiting_bootstrap"
         try:
-            sub_id = self.client.subscribe_public("l2Book", self.instrument, self._on_ws_message)
+            sub_id = self.client.subscribe_public(
+                "l2Book", self.instrument,
+                lambda message: self._on_ws_message(message, generation),
+            )
             with self._lock:
                 self._subscription_id = sub_id
             return self.refresh()
