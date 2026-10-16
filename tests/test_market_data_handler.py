@@ -259,3 +259,13 @@ def test_direct_bad_snapshot_also_quarantines(handler):
     assert manager.current().invalid_reason == "invalid_book"
     manager.apply_snapshot(book(time=10_001))
     assert manager.ready
+
+
+def test_stop_during_rest_bootstrap_cannot_revalidate_stopped_feed(handler):
+    manager, client, _ = handler
+    client.on_query = manager.stop
+    with pytest.raises(RuntimeError, match="superseded"):
+        manager.start()
+    assert not manager.ready
+    assert manager.current() is None
+    assert client.unsubscribe_count == 1
