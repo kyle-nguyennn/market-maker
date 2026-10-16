@@ -235,3 +235,27 @@ def test_config_mismatch_and_invalid_ages_rejected(handler):
             client, "BTC",
             adapter=HyperliquidMarketAdapter(
                 HyperliquidVenueConfig.from_environment(dex="pa", environ={})))
+
+
+def test_delayed_old_subscription_callback_ignored_after_restart(handler):
+    manager, client, _ = handler
+    manager.start()
+    previous_callback = client.callback
+    manager.stop()
+    manager.start()
+    previous_callback(event(book(time=10_090, bid="1", ask="2")))
+    assert manager.current().timestamp_ms == 10_000
+    assert manager.current().best_bid == Decimal("65000")
+    assert manager.ready
+    manager.stop()
+
+
+def test_direct_bad_snapshot_also_quarantines(handler):
+    manager, _, _ = handler
+    manager.apply_snapshot(book())
+    with pytest.raises(ValueError):
+        manager.apply_snapshot(book(coin="pa:BTC"))
+    assert not manager.ready
+    assert manager.current().invalid_reason == "invalid_book"
+    manager.apply_snapshot(book(time=10_001))
+    assert manager.ready
