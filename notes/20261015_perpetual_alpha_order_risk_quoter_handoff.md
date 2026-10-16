@@ -249,3 +249,31 @@ When pausing or handing work off again, append:
 4. Implement request budgets, kill-triggered cancel dispatch/retry and a small deterministic paper replay. Do NOT enable live mode until those are green.
 
 **Next local test command:** `python -m pytest -q tests/test_order_manager.py tests/test_safe_execution.py tests/test_risk_manager.py tests/test_portfolio_fills.py tests/test_hyperliquid_client.py`. Also test with `PERPETUAL_ALPHA_DEX=pa`. Open PR #6 checks to confirm the final head is green before continuing.
+
+
+---
+
+## 10. October 16 — typed L2 boundary and stateful read-only market data
+
+**Branch:** `feat/perpetual-alpha-order-risk-quoter` · **Draft PR:** [#6](https://github.com/kyle-nguyennn/market-maker/pull/6)  
+**Last code/test commit:** `06148fca1072405c514f7403d57fcb4a88d024da`  
+**Verified CI:** [run 38853561520](https://github.com/kyle-nguyennn/market-maker/actions/runs/38853561520): **154 passed (par) + 154 passed (pa)**. Read-only live SDK probe jobs skipped on pull_request; all tests are offline/mocked.
+
+### Implemented
+
+- [x] `exchanges/hyperliquid/types.py`: `HyperliquidL2Level`, `HyperliquidL2Snapshot`, `HyperliquidL2BookMessage` TypedDicts; runtime validation for REST snapshot and WS callback envelope. SDK px/sz stay wire strings; no Decimal outside the adapter.
+- [x] `HyperliquidVenueClient.query_l2_book` now returns `HyperliquidL2Snapshot`, validates structure and exact DEX instrument; `unsubscribe_public` scopes one WS subscription without disconnecting the shared connection. Verified `Info.unsubscribe` exists in pinned SDK 0.24.0.
+- [x] `HyperliquidMarketAdapter.from_sdk_l2_snapshot` accepts the typed response and still validates its content, rejects nonfinite/nonpositive order-book levels, flags crossed/unsorted books invalid, returns immutable venue-independent `MarketState`.
+- [x] New `market_handler/hyperliquid_market_data_handler.py`: one handler per instrument, holds latest `MarketState`, exposes `.bids`, `.asks`, `.current()`, and `.ready`. Starts WS subscription *before* REST snapshot, rejects older timestamps and preserves WS priority over same-timestamp REST. Invalidates stale/future/malformed books. SDK callback exceptions quarantine the feed. Stop/unsubscribe, subscription generations, and bootstrap-vs-stop race are guarded.
+- [x] New `tests/test_market_data_handler.py`, SDK client and adapter tests: malformed wire fields, data separation, immutable cache, WS-vs-REST race, old and equal timestamps, stale and future data, crossed/unsorted book, invalid WS callback, prior-generation callbacks, stop during REST bootstrap, SDK unsubscribe. No network or trading side effects.
+- [x] Added operator-facing explanation and a read-only usage example to `docs/PERPETUAL_ALPHA.md`.
+
+### Still incomplete — do not confuse this with a live-ready feed
+
+- Hyperliquid L2 subscriptions deliver **complete snapshot frames**, not order-book deltas. There is no exchange sequence ID; exchange `time` is the only ordering clue. Equal-ms WS frames are ordered by SDK callback arrival, **not proven gap-free**.
+- **No automatic WS reconnect/resubscribe**, no durable feed playback, and no deliberate REST snapshot recovery policy after silent disconnections. The handler only detects staleness through `.current()` / `.ready`; a caller must check them.
+- **No integrated live `activeAssetCtx`/mark/oracle/funding freshness** in this market cache (the existing adapter supports snapshot conversion with optional context), no event-driven quote-cancel orchestration, no market/risk/execution composition runner.
+- Existing order/fill WS normalization, durable action journal, capacity/equity mapping and request-budget controls also remain open.
+- All changes are read-only market-data handling. **No account queried, no credentials accessed, no authenticated market orders or cancels sent, and `pa` signing guard unchanged.**
+
+**Next step:** wire validated market and context feeds into a paper-only runner after deciding explicit reconnect/resync quality gates; independently finish the existing order/fill and risk P0 work before any unattended live use.
