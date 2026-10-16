@@ -1,4 +1,4 @@
-# Market-data history: Redis warm cache with bounded in-memory conflation
+# Market-data architecture: hot state, rolling features, and Redis warm history
 
 **Status:** Design proposal — not implemented  
 **Date:** 2026-10-16  
@@ -18,32 +18,40 @@ Redis is a **warm, lossy rolling historical cache**, not an exchange book of rec
 ### Data-flow diagram
 
 ```text
-Hyperliquid REST snapshot / l2Book WebSocket
-                  |
-                  v
-     HyperliquidMarketDataHandler (per instrument)
-       - wire validation + Decimal adapter
-       - exchange-time ordering / feed freshness
-       - immutable latest MarketState (hot path)
-           |                       |
-           v                       v
-   Quoter / Risk (direct)    MarketDataHistory.offer(snapshot)
-                              |     cheap, nonblocking only
-                              v
-                         bounded in-memory queue
-                         + keyed overflow/coalescer
-                              |
-                              v
-                         background writer
-                         (retry / timeout / batch)
-                              |
-                              v
-                         Redis Streams
-                         rolling warm cache
-                              |
-                              v
-                     historical feature readers
-                     optional Parquet archiver
+                  Hyperliquid REST / WebSocket
+                               |
+                               v
+                 HyperliquidMarketDataHandler
+                  normalized accepted MarketState
+                  + feed_epoch + acceptance_seq
+                               |
+              +----------------+----------------+
+              |                                 |
+              v                                 v
+     Live ordered observations       MarketDataHistory.offer()
+              |                        (nonblocking/history only)
+              v                                 |
+         FeatureEngine                           v
+       bounded rolling windows             bounded FIFO
+       incremental features                + keyed conflation
+              |                                 |
+              v                                 v
+        FeatureSnapshot                  async Redis writer
+              |                                 |
+              v                                 v
+     QuotingContext assembler               Redis Streams
+      (MarketState version                  (warm, lossy cache)
+       + Features same version                    |
+       + PortfolioSnapshot)                       v
+              |                         offline readers / optional
+              v                          archival / feature warmup*
+            Quoter
+              |
+              v
+      Risk -> OrderManager -> Gateway
+
+* Warmup may use persisted history only if its completeness, ordering,
+  epoch and provenance can be validated. Live signals never depend on Redis.
 ```
 
 **Critical invariant:** Redis availability, Redis write latency, and historical buffer congestion **must never hold the market handler's state lock or block the SDK WebSocket callback**. A Redis outage may degrade historical completeness but may not turn fresh data into an old actionable book. Conversely, quoting must continue to honor the market handler's own freshness and data-quality gates independently of history.
@@ -54,6 +62,8 @@ Hyperliquid REST snapshot / l2Book WebSocket
 | --- | --- | --- |
 | `HyperliquidMarketDataHandler` | Latest accepted full L2 book, DEX/instrument scope, WS callback, REST bootstrap, ordering, freshness, validity, subscription lifecycle | Historical ring, Redis client/writer, Redis retries, historical conflation |
 | `HyperliquidMarketAdapter` | Hyperliquid wire -> venue-neutral Decimal `MarketState` | Buffers, connections, persistence |
+| `FeatureEngine` (new) | Ordered, in-process rolling statistics and versioned feature snapshots; gap detection and warmup | Redis I/O, venue SDK dependencies, quoting policy, positions/risk | 
+| `Quoter` (existing, interface change proposed) | Strategy policy given current book + aligned features + portfolio; decides fair price, spreads and sizes | Historical ingestion, Redis buffering, raw wire parsing | 
 | `MarketDataHistory` (new) | Asynchronous ingestion API, buffer capacity, overflow policy, per-key conflation and loss tracking, writer/sink lifecycle | Live order-book authority, risk gating, SDK subscriptions |
 | `RedisMarketDataSink` (new) | Stream encoding, pipelined `XADD`, bounded retention, short network timeouts, transient-error handling | Live feed callback, strategy evaluation, order/risk state |
 | `MarketDataHistoryReader` (future) | Time-range warm-history lookup and gap metadata | Claim of complete tick replay from a lossy cache |
@@ -222,3 +232,135 @@ Minimum deterministic cases:
 - No automatic switch to live trading, no changes to Hyperliquid API keys, no new signed venue calls.
 
 **Next decision before coding:** select measurable memory/latency targets and whether complete L2 is retained at every healthy WS frame or intentionally downsampled for Redis cost. **Conflation-on-pressure and intentional sampling are different policies** and must be reported separately.
+
+
+---
+
+## 10. Live feature computation and quoter interface (design, not implemented)
+
+**Decision, 2026-10-16:** Keep the quoter **stateless with respect to market-data history**, use a **stateful, venue-neutral `FeatureEngine`** to compute rolling indicators in memory, and give the quoter **both the entire latest immutable `MarketState` and a version-aligned `FeatureSnapshot`**. The strategy may inspect raw L2 depth for quoting, but it must not independently maintain redundant historical book windows. `MarketDataHistory` remains the separate, possibly lossy Redis warm-history pipeline described above.
+
+### 10.1 Responsibilities and data path
+
+| Concern | Owner | Examples |
+| --- | --- | --- |
+| Validate market-data payload and maintain current L2 | `HyperliquidMarketDataHandler` / adapter | Book, best bid/ask, validity, timestamps, feed epoch |
+| Stateful historical signal inputs | `FeatureEngine` | Recent mids/returns, previous best bid/ask and sizes, bounded rolling depth summaries |
+| Derived *descriptive features* | `FeatureEngine` | Realized volatility, top-level/L5 imbalance, microprice, order-flow imbalance |
+| Short-horizon directional forecasts (optional) | Separate `AlphaModel` consuming `FeatureSnapshot` | Predictive drift/fair-value adjustment, calibrated horizon |
+| Action policy | `Quoter` | Fair value, reservation price, spread, inventory skew, order quantities, quote hysteresis |
+| Portfolio and risk | Portfolio snapshot and `RiskManager` | Available inventory, position/exposure constraints, new-order authorization |
+| Redis warm-history storage | `MarketDataHistory` and `RedisMarketDataSink` | Bounded buffering, keyed conflation, XADD, incomplete replay markers |
+
+The live path consumes the **accepted, ordered feed directly**; it must **not** query Redis on each quote. The handler delegates to `MarketDataHistory.offer()` for persistence independently of feature computation. A composition/orchestration layer wires accepted snapshots into the feature pipeline, assembles the version-consistent quoting input and handles the scheduling of quote evaluation. No Redis detail leaks into the quoter.
+
+### 10.2 Proposed domain contracts
+
+These signatures are **illustrative**, deliberately not implemented in this change. All calculations affecting prices, sizes and monetary values retain venue-neutral `Decimal` representation. A feature engine may use optimized numeric intermediates only with an explicitly validated precision and determinism policy.
+
+```python
+@dataclass(frozen=True)
+class MarketObservation:
+    market: MarketState
+    venue: str
+    dex: str
+    feed_epoch: int
+    acceptance_seq: int
+    received_ts_ns: int
+
+@dataclass(frozen=True)
+class FeatureSnapshot:
+    instrument: str
+    dex: str
+    feed_epoch: int
+    acceptance_seq: int  # exact input book version
+    calculated_ts_ns: int
+    is_ready: bool
+    invalid_reason: str | None
+    realized_volatility: Decimal | None
+    l1_imbalance: Decimal | None
+    microprice: Decimal | None
+    order_flow_imbalance: Decimal | None
+    # Future: L5 imbalance, trade imbalance, model outputs.
+
+class FeatureEngine(Protocol):
+    def accept(self, observation: MarketObservation) -> FeatureSnapshot: ...
+    def current(self) -> FeatureSnapshot | None: ...
+    def invalidate(self, reason: str) -> None: ...
+
+@dataclass(frozen=True)
+class QuotingContext:
+    market: MarketState
+    features: FeatureSnapshot
+    portfolio: PortfolioSnapshot
+    # Also carries feed_epoch + acceptance_seq for version assertions.
+
+class BaseQuoter(ABC):
+    @abstractmethod
+    def quote(self, context: QuotingContext) -> list[Quote]: ...
+```
+
+**Compatibility note:** The existing `quoter/base_quoter.py` currently defines `quote(state: MarketState)` and its helper methods operate on `MarketState` alone. Changing to `QuotingContext` is a **future interface migration**; it should happen with adapters/tests for existing subclasses, not by introducing a second incompatible default interface. The proposed `PortfolioSnapshot` is a venue-neutral, consistent snapshot, not a raw SDK account response.
+
+A feature must describe a measured property; a directional **signal/alpha** that interprets features should be distinct from the calculation of those features. An alpha model can be injected into a strategy or composed upstream without making generic features strategy-specific.
+
+### 10.3 First four features for Perpetual Alpha
+
+Initial development should favor a small deterministic pipeline, retaining only the minimum observations required:
+
+1. **Rolling realized volatility:** Computed from consecutive mid-price log returns over an explicitly sized event/time window. Specify aggregation clock, duration, annualization (if any), zero/duplicate exchange timestamps and EWMA/rolling-window semantics. For market making the horizon must match quote lifetime or short-term forecast horizon; do not label uncalibrated variance as an annualized `sigma`.
+2. **Top-of-book imbalance:** Given best bid size `q_b` and ask size `q_a`, `(q_b - q_a) / (q_b + q_a)` when both are positive and the book is valid. L5 cumulative depth imbalance is an optional separate feature.
+3. **Microprice:** Given best bid `b`, ask `a`, sizes `q_b`/`q_a`, compute `(a*q_b + b*q_a)/(q_b + q_a)`. Explicitly reject zero denominator or invalid book; do not confuse a microprice heuristic with a verified execution price.
+4. **Recent order-flow imbalance (OFI):** Compare consecutive best-price/size states, using a documented L1 event-based definition, then aggregate over a bounded window. Unlike static depth imbalance, **OFI requires continuity of observations**. A conflated or missing update can materially distort it.
+
+All formulas must be validated against hand-computed fixtures. Features should publish `None` / `is_ready=false` rather than invented fallback values when their required window is absent, invalid or discontinuous.
+
+### 10.4 Memory, update cadence, and version consistency
+
+- Maintain **bounded in-process** rolling deques or fixed-size ring buffers *inside `FeatureEngine`*, one partition per `(venue, dex, instrument)`. Store just the needed observations (mid, returns, best-level sizes, prior-book comparators, timestamps, feed version); full-depth history is not required for all four initial features.
+- Prefer incremental updates with bounded work per accepted observation; avoid rescanning Redis or a full order-book history on every quote. Deep-book features may examine the *latest* book directly and cache their result by acceptance version.
+- Assign `feed_epoch` and strictly monotonic `acceptance_seq` when the handler **commits** a genuinely new update. Duplicate/older REST observations that the handler rejects must not advance the feature window.
+- Publish a `FeatureSnapshot` tagged with the exact accepted book version used to calculate it. The quoter input assembler must compare `(venue, dex, instrument, feed_epoch, acceptance_seq)` before combining `MarketState` and `FeatureSnapshot`. A time difference alone is **not** sufficient proof of alignment.
+- Prefer a single ordered per-instrument processing lane with a small, deterministic update budget and atomic publication of the matching `(MarketState, FeatureSnapshot)` pair. Do not run expensive feature calculations while holding the SDK/market-handler state lock. If using an asynchronous feature worker, define its scheduling and overflow policy explicitly and never allow a stale feature snapshot to be paired with a newer book.
+- Separate **feature update cadence** (every accepted observation, where path dependence requires it) from **quote decision cadence** (possibly throttled/hysteretic to respect venue request budgets). Recalculating features does not imply cancel-and-replace on every book tick.
+- Exchange `l2Book` has no sequence ID, so acceptance sequence describes **local processing order**; it cannot certify complete venue delivery. Mark feed gaps/reconnects separately.
+
+### 10.5 Path-dependent features versus Redis conflation
+
+The history writer's **keyed latest-value conflation** is acceptable for its declared lossy warm-cache purpose. **It must not be applied silently to the live `FeatureEngine` input**, which depends on the full locally accepted sequence.
+
+Example: if the mid moves `100 → 101 → 99`, coalescing directly to `100 → 99` changes realized return variation and order-flow imbalance. Although the newest book is still valid for immediate quoting, the resulting historical features would be inaccurate.
+
+Policy:
+
+1. While the live feature processing lane keeps up, process all **accepted** book observations in their acceptance order. Redis may independently store fewer snapshots.
+2. If feature processing falls behind, **do not** silently adopt Redis's most-recent-per-key policy. A bounded feature queue may overflow, but this is a **feature-integrity failure**: record a gap, invalidate continuity-dependent features, and rewarm them from a trustworthy uninterrupted sequence.
+3. Stateless or current-book-only features (e.g. imbalance/microprice) may recover on the next valid snapshot; realized volatility/OFI must satisfy their documented rewarm/continuity requirements.
+4. When the feed reconnects, restarts, changes epoch, or quality degrades, reset or invalidate affected rolling features. Historical Redis values may help warm a feature only if the requested lookback is verified complete, correctly ordered, source-consistent and not marked `CONFLATED`/`GAPPED`.
+5. Keep independent telemetry: `feature_window_ready`, `feature_lag_ms`, `feature_latest_seq`, `feature_gaps`, `feature_reset_reason`, and `history_conflations`. Never conflate the two types of data loss.
+
+### 10.6 Quoting failure behavior and risk boundaries
+
+- The quoter receives the **full latest `MarketState`**, not only scalar features, so it can choose a passive level based on best bid/ask, spread, and book depth.
+- When an essential feature is missing, stale, mismatched or invalid, the default conservative strategy **does not generate new orders**. Optional feature-specific fallbacks must be explicit, named and unit-tested; no silent substitution of stale volatility or OFI.
+- Feature validity does not supersede **live book** validity, account/capacity checks, inventory constraints or final adapter-quantized pre-send risk evaluation.
+- Redis writer outages alone must **not** stop the feature engine or invalidate an otherwise healthy live book, unless the strategy explicitly requires verified persisted history.
+- For example, quoter can derive fair value from current microprice/mark and alpha (if available), adjust reservation price by inventory, choose half-spread using volatility and costs, and choose quantities from limits/depth. This remains a strategy policy, **not** part of `FeatureEngine`.
+
+### 10.7 Acceptance tests (proposed)
+
+- Exact hand-calculated fixture results for mid returns/realized volatility, imbalance, microprice and OFI, including empty/crossed/depth-zero inputs.
+- Streaming feature updates produce the same values as deterministic ordered batch replay from the same **complete** sequence.
+- `FeatureEngine` receives each accepted book once; rejected old REST frames and delayed old-generation WS callbacks do not update windows.
+- Feature snapshot `acceptance_seq` and `feed_epoch` must match the market snapshot in a `QuotingContext`; mismatches block quoting.
+- Slow/disconnected Redis causes keyed history conflation **without changing** the live feature series or quote results for the same complete accepted market input.
+- Simulated feature queue overflow or WS discontinuity makes path-dependent features invalid until rewarm; no invented OFI/volatility continuity.
+- Multiple instruments/DEXs and restarts cannot share or contaminate feature rings, version identifiers or Redis keys.
+- Quote hysteresis means the features can update many times while the quoter chooses no replacement, preserving request budgets.
+- Existing mocked gateway/risk rejection remains the final authority after quoting, including stale book and missing exposure inputs.
+
+### 10.8 Scope and implementation order
+
+**Nothing in section 10 is implemented by documenting it.** First add typed `MarketObservation` and versioned feature/quoting contexts, then implement pure bounded `FeatureEngine` with unit tests, then compose the handler → feature pipeline → quoter in a **paper-only** runner. Integrate Redis history independently so its throughput/backpressure cannot affect quote correctness. Finally prove feed-quality recovery, risk-gateway checks and deterministic replay before considering any authenticated continuous execution.
+
+**Do not conflate feature computations, quoting policy and data history persistence inside one class.**
