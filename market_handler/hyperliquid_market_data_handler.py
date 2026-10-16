@@ -143,21 +143,31 @@ class HyperliquidMarketDataHandler:
     def _on_ws_message(self, message: object, generation: int) -> None:
         # The SDK invokes callbacks on its WS thread; never crash that thread
         # or silently keep quoting using an older apparently-valid book.
+        # Keep the lifecycle check and state publication atomic with stop().
         with self._lock:
             if not self._running or generation != self._generation:
                 return
-        try:
-            self.handle_ws_message(message)
-        except Exception:
-            self.invalidate("invalid_ws_book")
+            try:
+                self.handle_ws_message(message)
+            except Exception:
+                self._blocked_reason = "invalid_ws_book"
 
-    def refresh(self) -> MarketState:
+    def refresh(self, *, _generation: int | None = None) -> MarketState:
         """Fetch a read-only REST snapshot, with WS precedence for newer data."""
         try:
             book = self.client.query_l2_book(self.instrument)
-            return self.apply_snapshot(book, source="rest")
+            with self._lock:
+                if _generation is not None and (
+                    not self._running or self._generation != _generation
+                ):
+                    raise RuntimeError("REST bootstrap superseded by stop/restart")
+                return self.apply_snapshot(book, source="rest")
         except Exception:
-            self.invalidate("rest_refresh_failed")
+            # A failed concurrent bootstrap must not override a restarted
+            # generation's data-quality status.
+            with self._lock:
+                if _generation is None or self._generation == _generation:
+                    self._blocked_reason = "rest_refresh_failed"
             raise
 
     def start(self) -> MarketState:
@@ -180,9 +190,11 @@ class HyperliquidMarketDataHandler:
             )
             with self._lock:
                 self._subscription_id = sub_id
-            return self.refresh()
+            return self.refresh(_generation=generation)
         except Exception:
-            self.invalidate("market_data_start_failed")
+            with self._lock:
+                if generation == self._generation:
+                    self._blocked_reason = "market_data_start_failed"
             try:
                 self.stop()
             except Exception:
