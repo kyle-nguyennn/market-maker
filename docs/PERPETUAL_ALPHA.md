@@ -306,3 +306,18 @@ no fresh `activeAssetCtx` merge into the cached book; no integration with
 risk-triggered quote cancellation or continuous runner. A stale book blocks
 new placements only when the risk gateway is actually provided this state.
 The read-only cache never submits orders or cancels.
+
+
+### Proposed Redis warm-history architecture (design only)
+
+See [MARKET_DATA_HISTORY_REDIS_DESIGN.md](MARKET_DATA_HISTORY_REDIS_DESIGN.md).
+`HyperliquidMarketDataHandler` keeps the current actionable book and delegates
+accepted snapshots to a new, venue-neutral `MarketDataHistory` component.
+The history component owns a bounded in-memory rate-mismatch buffer, an
+asynchronous Redis Streams sink, and latest-per-(venue, DEX, symbol, channel)
+**keyed conflation under backpressure**. Incomplete history is flagged with
+explicit gap/conflation metadata. Trades cannot be silently conflated; order
+and fill events must use a separate reliable journal. Redis is never on the
+synchronous quote/risk path.
+
+**Status:** proposal only; no Redis/history integration has been implemented.
