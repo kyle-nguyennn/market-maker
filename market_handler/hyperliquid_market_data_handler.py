@@ -193,12 +193,14 @@ class HyperliquidMarketDataHandler:
             return self.refresh(_generation=generation)
         except Exception:
             with self._lock:
-                if generation == self._generation:
+                still_current = generation == self._generation
+                if still_current:
                     self._blocked_reason = "market_data_start_failed"
-            try:
-                self.stop()
-            except Exception:
-                pass  # leave disabled, expose unsubscribe failure on next start
+            if still_current:
+                try:
+                    self.stop()
+                except Exception:
+                    pass  # leave disabled, expose unsubscribe failure on next start
             raise
 
     def stop(self) -> None:
