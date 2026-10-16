@@ -277,3 +277,26 @@ When pausing or handing work off again, append:
 - All changes are read-only market-data handling. **No account queried, no credentials accessed, no authenticated market orders or cancels sent, and `pa` signing guard unchanged.**
 
 **Next step:** wire validated market and context feeds into a paper-only runner after deciding explicit reconnect/resync quality gates; independently finish the existing order/fill and risk P0 work before any unattended live use.
+
+
+---
+
+## 11. October 16 — Redis warm market-history design (not implemented)
+
+Dedicated design: [`docs/MARKET_DATA_HISTORY_REDIS_DESIGN.md`](../docs/MARKET_DATA_HISTORY_REDIS_DESIGN.md).
+
+The proposed split is `HyperliquidMarketDataHandler` as the current hot state
+owner plus a **delegated** `MarketDataHistory.offer(observation)` that never
+blocks on Redis. `MarketDataHistory` owns a bounded in-memory FIFO to bridge
+ingestion/drain rates, an async Redis Streams writer, and a latest-per-key
+conflation map when ingress memory or the Redis sink is congested.
+
+Conflation keys are scoped by venue/DEX/symbol/channel. Conflate pending full
+book/BBO/context **state snapshots** only; loss/conflation/gap metadata must
+remain observable. **Never silently conflate individual trades, order/fill
+events, or execution/risk audits**. Keep Redis off the synchronous
+quote/risk path. The cache is explicitly lossy under sustained overload;
+a complete replay needs a separately guaranteed capture path.
+
+**Status:** design document committed; *no runtime code, Redis dependency,
+live connections, or authenticated orders were added*.
