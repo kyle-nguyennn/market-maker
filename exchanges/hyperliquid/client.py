@@ -10,7 +10,8 @@ from hyperliquid.info import Info
 from hyperliquid.utils.types import Cloid
 
 from .config import HyperliquidVenueConfig
-from .types import OrderSide, VenueOrderRequest, VenueOrderResult
+from .types import (HyperliquidL2Snapshot, OrderSide, VenueOrderRequest,
+                    VenueOrderResult, parse_l2_snapshot)
 
 
 _ADDRESS = re.compile(r"0x[0-9a-fA-F]{40}\Z")
@@ -105,8 +106,12 @@ class HyperliquidVenueClient:
     def query_all_mids(self) -> Any:
         return self._read().all_mids(dex=self.config.dex)
 
-    def query_l2_book(self, instrument: str) -> Any:
-        return self._read().l2_snapshot(self._symbol(instrument))
+    def query_l2_book(self, instrument: str) -> HyperliquidL2Snapshot:
+        """Return a structurally validated, typed full-depth L2 snapshot."""
+        book = parse_l2_snapshot(self._read().l2_snapshot(self._symbol(instrument)))
+        if book["coin"] != self._symbol(instrument):
+            raise ValueError("Hyperliquid L2 response belongs to a different instrument/DEX")
+        return book
 
     def query_spot_balance(self, team_wallet: str) -> Any:
         return self._read().spot_user_state(_team_address(team_wallet))
@@ -262,6 +267,17 @@ class HyperliquidVenueClient:
         self.connect_stream()
         return self._ws_info.subscribe(
             {"type": channel, "coin": self._symbol(instrument)}, callback
+        )
+
+    def unsubscribe_public(self, channel: str, instrument: str,
+                           subscription_id: int) -> bool:
+        """Remove exactly one public WS subscription without closing other feeds."""
+        if channel not in _PUBLIC_CHANNELS:
+            raise ValueError(f"unsupported public channel: {channel}")
+        if self._ws_info is None:
+            return False
+        return self._ws_info.unsubscribe(
+            {"type": channel, "coin": self._symbol(instrument)}, subscription_id
         )
 
     def subscribe_private(self, channel: str, team_wallet: str,
