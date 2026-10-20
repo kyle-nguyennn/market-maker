@@ -1,5 +1,7 @@
 # 2026-10-15 — Perpetual Alpha rules, Discord clarifications, and implementation gaps
 
+> **Correction added 2026-10-20:** This dated note records earlier Discord statements naming scored DEX `pa`. The official [participant guide](https://perpetual-alpha26.github.io/docs/) currently specifies **`pas` (index 271)**, testnet, USDP and unified account mode. Our integration now uses `pas`; do not configure or trade on `pa`. Any old `pa` API probes below are historical and **not scored-DEX validation**. Historical organizer statements are retained as originally recorded.
+
 **Project:** market-maker / Perpetual Alpha  
 **Team:** Auror  
 **Recorded / updated:** 2026-10-15 (SGT)  
