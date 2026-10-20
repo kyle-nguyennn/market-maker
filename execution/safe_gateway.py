@@ -1,7 +1,7 @@
 """Order actions may enter the SDK only through this fail-closed boundary.
 
 Importantly, this module NEVER enables live trading on its own. Its default is
-paper/dry-run. The Hyperliquid client retains the separate scored-pa signing
+paper/dry-run. The Hyperliquid client retains the separate scored-pas signing
 guard. The caller owns fresh account snapshots, journaling and request budgets.
 """
 from __future__ import annotations
