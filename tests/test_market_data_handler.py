@@ -227,14 +227,14 @@ def test_config_mismatch_and_invalid_ages_rejected(handler):
     with pytest.raises(ValueError, match="freshness"):
         HyperliquidMarketDataHandler(client, "BTC", max_age_ms=0)
     with pytest.raises(ValueError, match="dex"):
-        HyperliquidMarketDataHandler(client, "pa:BTC")
+        HyperliquidMarketDataHandler(client, "pas:BTC")
     with pytest.raises(ValueError, match="DEX profile"):
         from market_handler.hyperliquid_adapter import HyperliquidMarketAdapter
         from exchanges.hyperliquid.config import HyperliquidVenueConfig
         HyperliquidMarketDataHandler(
             client, "BTC",
             adapter=HyperliquidMarketAdapter(
-                HyperliquidVenueConfig.from_environment(dex="pa", environ={})))
+                HyperliquidVenueConfig.from_environment(dex="pas", environ={})))
 
 
 def test_delayed_old_subscription_callback_ignored_after_restart(handler):
