@@ -2,7 +2,7 @@
 
 Practice DEX par: testnet/USDPR; scored DEX pas: testnet/USDP.
 The official participant guide specifies scored dex pas (index 271).
-Previous pas metadata probes on 2026-10-15 did not validate scored pas.
+Previous pa metadata probes on 2026-10-15 did not validate scored pas.
 Secrets belong in local environment variables, never in this module.
 """
 from __future__ import annotations
