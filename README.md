@@ -66,7 +66,7 @@ to a Git-ignored local file, then select a DEX:
 
 ~~~bash
 cp .env.template .env
-# Edit .env: PERPETUAL_ALPHA_DEX=par (practice) or pa (scored)
+# Edit .env: PERPETUAL_ALPHA_DEX=par (practice) or pas (scored)
 python -m apps.perpetual_alpha
 python -m apps.perpetual_alpha --check
 ~~~
@@ -79,39 +79,43 @@ You can override the environment selection for a single read-only command:
 
 ~~~bash
 python -m apps.perpetual_alpha --check --dex par
-python -m apps.perpetual_alpha --check --dex pa
+python -m apps.perpetual_alpha --check --dex pas
 ~~~
 
 | Setting | Practice | Scored |
 | --- | --- | --- |
-| DEX selector | par | pa |
+| DEX selector | par | pas |
 | Network | Hyperliquid testnet | Hyperliquid testnet |
 | REST host | api.hyperliquid-testnet.xyz | api.hyperliquid-testnet.xyz |
-| DEX prefix | par: | pa: |
+| DEX prefix | par: | pas: |
 | Collateral | USDPR | USDP |
 
 The shared config is loaded via HyperliquidVenueConfig.from_environment()
 and passed to both HyperliquidVenueClient and HyperliquidMarketAdapter. The
 client uses that host for REST, SDK-signed Exchange and SDK WebSocket connections,
 and every market/account query uses the corresponding DEX. Invalid combinations
-(e.g., pa with the mainnet URL, or pa with USDPR) raise ValueError early.
+(e.g., pas with the mainnet URL, or pas with USDPR) raise ValueError early.
 
 The diagnostics are read-only: no API private key is loaded or required.
-PERPETUAL_ALPHA_PA_ALLOW_TRADING=false blocks signed pa operations even when an
-agent key is available. Do **not** enable pa trading until its deployment,
+PERPETUAL_ALPHA_PAS_ALLOW_TRADING=false blocks signed pas operations even when an
+agent key is available. Do **not** enable pas trading until its deployment,
 endpoint, account funding, agent approval, risk limits and execution tests have
 been verified. Confirm the approved agent can trade on the selected DEX; the same testnet network does not imply separate scored collateral is funded.
 
 Network connectivity alone does not establish that a team's scored USDP
-balance is funded. If the read-only pa diagnostic reports no USDP, contact
+balance is funded. If the read-only pas diagnostic reports no USDP, contact
 the organizers and do not attempt trading.
 
 **Security:** Never commit .env or private keys. Revoke any API key previously
 exposed in a screenshot and replace it with a fresh approved agent key.
 
-**Live API discovery on 2026-10-15:** querying the testnet API with dex=pa returned
-pa:BTC, pa:ETH and pa:HYPE. Mainnet dex=pa returned HTTP 500. The organizer's
-announced ten-asset universe was not yet fully visible on pa; re-check
-metadata before the scored competition begins. At the October 15 probe,
-pa:BTC market metadata and contexts were accessible, but the order book had
-no valid two-sided quote. That is not an execution-ready market.
+**Correction (2026-10-20):** The prior 2026-10-15 testnet probes selected
+`pa`, which is **not** the scored DEX identified by the participant guide.
+Those results (three assets and no two-sided BTC book) say nothing about
+`pas` readiness. The official guide specifies scored DEX `pas` (index 271),
+`USDP` collateral and unified margin mode. Verify live `pas` metadata, valid
+books, team balance and approved agent separately before any scored trading:
+
+```bash
+python -m apps.perpetual_alpha --check --dex pas --instrument BTC
+```
