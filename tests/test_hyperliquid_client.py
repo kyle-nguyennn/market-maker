@@ -16,7 +16,7 @@ from exchanges.hyperliquid.types import OrderSide, TimeInForce, VenueOrderReques
 
 @pytest.fixture(autouse=True)
 def _default_practice_profile(monkeypatch):
-    # These are par contract tests even if the developer's .env selects pa.
+    # These are par contract tests even if the developer's .env selects pas.
     monkeypatch.setenv("PERPETUAL_ALPHA_DEX", "par")
 
 
@@ -334,7 +334,7 @@ def test_active_asset_data_queries_exact_team_account_and_dex_symbol(sdk):
     with pytest.raises(ValueError):
         client.query_active_asset_data("invalid", "BTC")
     with pytest.raises(ValueError):
-        client.query_active_asset_data(TEAM, "pa:BTC")
+        client.query_active_asset_data(TEAM, "pas:BTC")
 
 
 def test_query_l2_book_fails_closed_for_malformed_or_wrong_dex(sdk):
@@ -344,7 +344,7 @@ def test_query_l2_book_fails_closed_for_malformed_or_wrong_dex(sdk):
     info = sdk[0].instances[-1]
 
     info.l2_snapshot = lambda coin: {
-        "coin": "pa:BTC", "time": 1, "levels": [[], []]
+        "coin": "pas:BTC", "time": 1, "levels": [[], []]
     }
     with pytest.raises(ValueError, match="different instrument/DEX"):
         client.query_l2_book("BTC")
