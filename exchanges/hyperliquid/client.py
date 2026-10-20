@@ -155,7 +155,7 @@ class HyperliquidVenueClient:
     def query_account_state(self, team_wallet: str) -> dict[str, Any]:
         wallet = _team_address(team_wallet)
         return {
-            "spot": self.query_spot_balance(wallet),  # USDPR on par, USDP on pa
+            "spot": self.query_spot_balance(wallet),  # USDPR on par, USDP on pas
             "perps": self.query_positions(wallet),
             "open_orders": self.query_open_orders(wallet),
         }
@@ -169,12 +169,12 @@ class HyperliquidVenueClient:
 
     def connect_exchange(self, *, team_wallet: str, api_private_key: str) -> None:
         """Configure the already-approved agent signer; does NOT approve a key."""
-        # Selecting pa or supplying a secret never silently enables live trading.
-        if self.config.dex == "pa" and not self.config.allow_live_trading:
+        # Selecting pas or supplying a secret never silently enables live trading.
+        if self.config.dex == "pas" and not self.config.allow_live_trading:
             raise PermissionError(
-                "pa trading is disabled. Verify network, live account funding, "
+                "pas trading is disabled. Verify network, live account funding, "
                 "API authorization and risk limits, then explicitly set "
-                "PERPETUAL_ALPHA_PA_ALLOW_TRADING=true."
+                "PERPETUAL_ALPHA_PAS_ALLOW_TRADING=true."
             )
         wallet = _team_address(team_wallet)
         if not api_private_key:
