@@ -49,7 +49,7 @@ Each market adapter owns both directions of conversion:
 - inbound venue values -> internal `Decimal` domain objects
 - internal `Decimal` intents -> venue-specific price/size/symbol types
 
-For Hyperliquid specifically, the adapter owns the selected `par:`/`pa:` symbol prefix,
+For Hyperliquid specifically, the adapter owns the selected `par:`/`pas:` symbol prefix,
 `szDecimals` size quantization, price precision/significant-figure rules,
 side mapping, and decimal-string serialization.
 
@@ -60,10 +60,10 @@ objects to integer cents/ticks only at its venue boundary.
 
 - Both DEXs currently use Hyperliquid **testnet**.
 - Practice DEX: `par`, collateral `USDPR`, e.g. `par:BTC`.
-- Scored DEX: `pa`, collateral `USDP`, e.g. `pa:BTC`.
-- Select the whole profile via `.env` (`PERPETUAL_ALPHA_DEX=par|pa`) or the CLI `--dex` flag.
+- Scored DEX: `pas`, collateral `USDP`, e.g. `pas:BTC`.
+- Select the whole profile via `.env` (`PERPETUAL_ALPHA_DEX=par|pas`) or the CLI `--dex` flag.
 - Internal market names are unqualified, e.g. `BTC`
-- Market-wide and position queries must explicitly select the configured dex (`par` or `pa`)
+- Market-wide and position queries must explicitly select the configured dex (`par` or `pas`)
 - Team wallet is used for account queries
 - Trading actions are signed by a separate approved API wallet
 - Never commit or log private keys
@@ -95,7 +95,7 @@ conda env update --format environment-yaml -n market-maker -f environment.hyperl
 The Hyperliquid client now uses the official SDK 0.24.0 and supports:
 
 - REST: selected DEX market specifications and asset contexts (mark/oracle/funding),
-  L2 books/mids, USDPR (par) or USDP (pa) spot collateral, DEX-scoped positions,
+  L2 books/mids, USDPR (par) or USDP (pas) spot collateral, DEX-scoped positions,
   open orders, filtered fills and individual order status.
 - WebSocket: l2Book, bbo, trades, activeAssetCtx, userFills, orderUpdates,
   userEvents and userFundings. These subscriptions return raw SDK messages.
@@ -106,7 +106,7 @@ The Hyperliquid client now uses the official SDK 0.24.0 and supports:
   status=ok responses containing a per-operation error.
 - The config validates selected network, host, WebSocket URL, DEX and collateral
   as one profile; mismatched combinations fail before SDK initialization.
-  Selecting pa never authorizes signed trading: `PERPETUAL_ALPHA_PA_ALLOW_TRADING`
+  Selecting pas never authorizes signed trading: `PERPETUAL_ALPHA_PAS_ALLOW_TRADING`
   defaults to `false`. Keys never appear in files or logs.
 
 The SDK's Info.meta_and_asset_ctxs() convenience method in 0.24.0 defaults
@@ -123,10 +123,10 @@ conda env create --format environment-yaml -f environment.hyperliquid.yml
 conda activate market-maker
 python -m pytest -q
 cp .env.template .env
-# Select PERPETUAL_ALPHA_DEX=par or pa in .env
+# Select PERPETUAL_ALPHA_DEX=par or pas in .env
 python -m apps.perpetual_alpha --check --instrument BTC
 # Temporarily override the selection:
-python -m apps.perpetual_alpha --check --dex pa --instrument BTC
+python -m apps.perpetual_alpha --check --dex pas --instrument BTC
 ~~~
 
 The diagnostic queries the **selected** DEX metadata, L2 and asset contexts,
@@ -146,8 +146,8 @@ from exchanges.hyperliquid.client import HyperliquidVenueClient
 from exchanges.hyperliquid.types import OrderSide, TimeInForce, VenueOrderRequest
 
 client = HyperliquidVenueClient()  # selected .env profile
-# For pa, explicitly verify funding, account approval, risk limits, and set
-# PERPETUAL_ALPHA_PA_ALLOW_TRADING=true before connecting a signer.
+# For pas, explicitly verify funding, account approval, risk limits, and set
+# PERPETUAL_ALPHA_PAS_ALLOW_TRADING=true before connecting a signer.
 client.connect_exchange(
     team_wallet=os.environ["PERPETUAL_ALPHA_TEAM_WALLET"],
     api_private_key=os.environ["PERPETUAL_ALPHA_API_PRIVATE_KEY"],
@@ -172,11 +172,11 @@ with HyperliquidMarketSpec from the actual market metadata.
 
 ### Open integration tasks
 
-1. Confirm read-only pa metadata and the team's scored USDP funding. On
-   2026-10-15 the testnet pa metadata returned only BTC/ETH/HYPE (3 of 10
-   announced markets); re-check deployment for all ten before launch.
+1. Confirm read-only `pas` metadata, all ten announced markets, valid live L2
+   liquidity, and the team's scored USDP funding. The 2026-10-15 `pa` probe
+   targeted a different DEX and is not evidence about scored `pas` readiness.
 2. PR #5 validated one deliberately tiny `par:BTC` resting post-only order and
-   cancel. This does **not** validate fills, continuous operation or scored `pa`
+   cancel. This does **not** validate fills, continuous operation or scored `pas`
    authorization. Independently verify revocation of the previously exposed key.
 3. L2 REST and WS frames now normalize through validated, typed wire payloads
    into a stateful, freshness-checked per-market cache. Still needed:
@@ -192,18 +192,20 @@ The SDK's own WebSocket manager is not a production-grade replacement for
 explicit reconnect, snapshot resync, event deduplication and stale-feed
 monitoring. Do not run an unattended trading strategy yet.
 
-### Empirical scored DEX discovery (2026-10-15)
+### Scored DEX name correction (2026-10-20)
 
-A read-only SDK query to `https://api.hyperliquid-testnet.xyz/info`
-with `dex=pa` returned `pa:BTC`, `pa:ETH`, and `pa:HYPE`.
-The same query against `https://api.hyperliquid.xyz/info` returned
-HTTP 500. **Both configured DEXs therefore use testnet for now.**
-The announced seven additional `pa` markets were not visible yet.
-The October 15 SDK L2 probe showed no valid two-sided `pa:BTC` book (mid=None),
-so scored connectivity is **not** scored trading readiness.
-Do not treat DEX discovery as proof of team USDP funding or trading readiness.
-See `notes/20261015_perpetual_alpha_competition_rules.md` for the
-organizer's complete rules and the remaining engineering gaps.
+The [official participant guide](https://perpetual-alpha26.github.io/docs/)
+specifies **`pas`** as the scored testnet DEX (dex index **271**), with
+symbols such as `pas:BTC`, `USDP` collateral, and the **unifiedAccount** mode.
+Prior 2026-10-15 read-only probes targeted obsolete `pa`, not `pas`.
+Their three-market metadata and invalid two-sided BTC book cannot establish
+anything about scored `pas` deployment or liquidity. Use the read-only
+`python -m apps.perpetual_alpha --check --dex pas --instrument BTC` command
+and the `scored-pas-readonly` CI probe to check the real venue. These queries
+do not prove USDP funding, API-wallet approval, margin state or safe trading.
+Retain `PERPETUAL_ALPHA_PAS_ALLOW_TRADING=false` until separately authorized
+and all operational and risk gates are satisfied. The old
+`PERPETUAL_ALPHA_PA_ALLOW_TRADING` variable is not an authorization alias.
 
 
 ## Order/risk increment (draft PR #6, October 15, 2026)
@@ -223,7 +225,7 @@ The branch `feat/perpetual-alpha-order-risk-quoter` now contains:
 - `execution/safe_gateway.py`: a dry-run-by-default dispatch boundary.
   Live mock testing requires separate `live_enabled` and
   `operator_authorized`; actual scored-DEX signing is still guarded by
-  `PERPETUAL_ALPHA_PA_ALLOW_TRADING=false`. It rechecks venue-quantized
+  `PERPETUAL_ALPHA_PAS_ALLOW_TRADING=false`. It rechecks venue-quantized
   price/size and derives all fillable orders from its OrderManager, including
   pending cancels, immediately before any potential SDK call.
 - `portfolio/accounting.py`: idempotent trade fill-ID application, including
@@ -244,12 +246,12 @@ Local offline validation:
 ```bash
 python -m pytest -q tests/test_order_manager.py tests/test_risk_manager.py \
   tests/test_safe_execution.py tests/test_portfolio_fills.py
-PERPETUAL_ALPHA_DEX=pa python -m pytest -q
+PERPETUAL_ALPHA_DEX=pas python -m pytest -q
 ```
 
 A passing mocked send-path test does not authorize live execution. Refer to
 `notes/20261015_perpetual_alpha_order_risk_quoter_handoff.md` for the remaining
-scored-pa go/no-go gates.
+scored-pas go/no-go gates.
 
 
 ## Read-only L2 market-data cache (October 16, 2026)
@@ -287,7 +289,7 @@ Example (read-only, no account or trading key required):
 from exchanges.hyperliquid.client import HyperliquidVenueClient
 from market_handler.hyperliquid_market_data_handler import HyperliquidMarketDataHandler
 
-client = HyperliquidVenueClient()  # selected par or pa profile
+client = HyperliquidVenueClient()  # selected par or pas profile
 handler = HyperliquidMarketDataHandler(client, "BTC", max_age_ms=2000)
 try:
     handler.start()  # subscribe + read-only REST L2 bootstrap
