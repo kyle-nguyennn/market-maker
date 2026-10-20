@@ -45,7 +45,7 @@ jobs:
       - name: Run offline SDK boundary tests
         run: python -m pytest -q
       - name: Run contract suite with scored DEX selected
-        run: PERPETUAL_ALPHA_DEX=pa python -m pytest -q
+        run: PERPETUAL_ALPHA_DEX=pas python -m pytest -q
 
   live-testnet-readonly:
     # Best-effort diagnostic: public market endpoints only, no account or keys.
@@ -86,10 +86,10 @@ jobs:
           print("No wallet queried; no signed request made.")
           PY
 
-  scored-pa-readonly:
-    # Read-only SDK integration probe: validate the selected pa profile against
-    # the real testnet API. No account queries, wallet keys or trading actions.
-    if: github.event_name == 'push'
+  scored-pas-readonly:
+    # Read-only SDK integration probe of the official pas scored profile.
+    # Advisory only; no account query, credentials or signed action.
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     continue-on-error: true
@@ -100,14 +100,14 @@ jobs:
           python-version: "3.11"
       - name: Install SDK
         run: python -m pip install -r requirements/hyperliquid.txt
-      - name: Probe pa SDK metadata, contexts, and book (read only)
+      - name: Probe pas SDK metadata, contexts, and book (read only)
         run: |
           python - <<'PY'
           from exchanges.hyperliquid.config import HyperliquidVenueConfig
           from exchanges.hyperliquid.client import HyperliquidVenueClient
           from market_handler.hyperliquid_adapter import HyperliquidMarketAdapter
 
-          for dex in ("par", "pa"):
+          for dex in ("par", "pas"):
               config = HyperliquidVenueConfig.from_environment(dex=dex, environ={})
               client = HyperliquidVenueClient(config)
               adapter = HyperliquidMarketAdapter(config)
@@ -130,5 +130,11 @@ jobs:
                   flush=True,
               )
               assert state.instrument == "BTC"
+              if dex == "pas":
+                  expected = {"BTC", "ETH", "HYPE", "SP500", "EWY", "EWJ",
+                              "BRENT", "GOLD", "USDEUR", "USDJPY"}
+                  missing = {f"pas:{symbol}" for symbol in expected} - set(names)
+                  assert not missing, f"scored pas markets missing: {sorted(missing)}"
+                  assert state.is_valid, "pas:BTC has no fresh, valid two-sided book"
           print("No wallet queried; no signed actions performed.")
           PY
