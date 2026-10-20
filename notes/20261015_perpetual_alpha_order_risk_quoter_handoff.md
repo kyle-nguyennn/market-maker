@@ -1,5 +1,7 @@
 # 2026-10-15 — Agent handoff: Perpetual Alpha order lifecycle, risk, baseline market maker
 
+> **Correction added 2026-10-20:** The official participant guide specifies scored DEX **`pas`** (testnet, USDP, index 271), not the `pa` in this dated handoff. Production config uses `PERPETUAL_ALPHA_DEX=pas` and `PERPETUAL_ALPHA_PAS_ALLOW_TRADING=false` by default. All historical `pa` references below describe prior assumptions, not current instructions. Do not authorize or send scored actions until live `pas` funding, book, approval, account mode and risk checks pass.
+
 **Repository:** `kyle-nguyennn/market-maker`  
 **Starting branch:** `feat/perpetual-alpha-order-risk-quoter` (**created directly from current `main`**)  
 **Date:** 2026-10-15 (SGT)  
