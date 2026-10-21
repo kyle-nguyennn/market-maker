@@ -6,6 +6,14 @@ from enum import Enum
 from uuid import NAMESPACE_URL, uuid4, uuid5
 import re
 
+
+def _valid_logical_instrument(value: str) -> bool:
+    """Allow venue-independent contract IDs without allowing whitespace/URLs."""
+    return isinstance(value, str) and re.fullmatch(
+        r"[A-Za-z0-9_][A-Za-z0-9_.-]*(?::[A-Za-z0-9_.-]+)?", value,
+    ) is not None and len(value) <= 128
+
+
 from model.order import (
     CancelAction, OrderAction, OrderEvent, OrderEventType, OrderIntent,
     PlaceAction, Side,
@@ -85,8 +93,8 @@ class OrderManager:
 
     @staticmethod
     def _validate_intent(intent: OrderIntent) -> None:
-        if not intent.instrument or ":" in intent.instrument:
-            raise ValueError("instrument must be a logical, nonempty symbol")
+        if not _valid_logical_instrument(intent.instrument):
+            raise ValueError("instrument must be a valid canonical logical identifier")
         if not isinstance(intent.side, Side):
             raise ValueError("invalid order side")
         if not isinstance(intent.price, Decimal) or not intent.price.is_finite() or intent.price <= 0:
@@ -98,7 +106,7 @@ class OrderManager:
 
     @staticmethod
     def _validate_order(order: LiveOrder) -> None:
-        if not order.instrument or ":" in order.instrument or not isinstance(order.side, Side):
+        if not _valid_logical_instrument(order.instrument) or not isinstance(order.side, Side):
             raise ReconciliationError("invalid recovered order identity")
         for field in (order.price, order.original_size, order.remaining_size):
             if not isinstance(field, Decimal) or not field.is_finite():
