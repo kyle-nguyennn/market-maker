@@ -152,7 +152,8 @@ class SQLiteWALJournal:
                 );
                 CREATE TABLE IF NOT EXISTS journal_anchor (
                     id INTEGER PRIMARY KEY CHECK(id=1),
-                    activation_ms INTEGER NOT NULL
+                    activation_ms INTEGER NOT NULL,
+                    baseline_equity TEXT NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS journal_safety (
                     id INTEGER PRIMARY KEY CHECK(id=1),
@@ -367,7 +368,7 @@ class SQLiteWALJournal:
             )
         return self._submit(read)
 
-    def initialize_flat_anchor(self, activation_ms: int) -> Future[int]:
+    def initialize_flat_anchor(self, activation_ms: int, baseline_equity: Decimal) -> Future[int]:
         """Persist a zero-inventory starting point exactly once.
 
         Caller must first establish flat venue positions and zero open orders
@@ -375,15 +376,16 @@ class SQLiteWALJournal:
         """
         if not isinstance(activation_ms, int) or activation_ms <= 0:
             raise ValueError("invalid activation timestamp")
+        self._number(baseline_equity, positive=True)
         def write(conn: sqlite3.Connection) -> int:
-            row = conn.execute("SELECT activation_ms FROM journal_anchor WHERE id=1").fetchone()
+            row = conn.execute("SELECT activation_ms,baseline_equity FROM journal_anchor WHERE id=1").fetchone()
             if row:
                 return int(row[0])
             if conn.execute("SELECT COUNT(*) FROM journal_actions").fetchone()[0]:
                 raise JournalConflict("unanchored journal already contains order actions")
             if conn.execute("SELECT COUNT(*) FROM journal_fills").fetchone()[0]:
                 raise JournalConflict("unanchored journal already contains fills")
-            conn.execute("INSERT INTO journal_anchor VALUES(1,?)", (activation_ms,))
+            conn.execute("INSERT INTO journal_anchor VALUES(1,?,?)", (activation_ms, str(baseline_equity)))
             return activation_ms
         return self._submit(write)
 
@@ -392,6 +394,29 @@ class SQLiteWALJournal:
             row = conn.execute("SELECT activation_ms FROM journal_anchor WHERE id=1").fetchone()
             return int(row[0]) if row else None
         return self._submit(read)
+
+    def load_baseline_equity(self) -> Future[Decimal | None]:
+        def read(conn: sqlite3.Connection) -> Decimal | None:
+            row = conn.execute("SELECT baseline_equity FROM journal_anchor WHERE id=1").fetchone()
+            return Decimal(row[0]) if row is not None else None
+        return self._submit(read)
+
+    def remember_order_oid(self, cloid: str, oid: int) -> Future[None]:
+        """Persist verified CLOID/OID mapping obtained from orderStatus."""
+        if not _CLOID.fullmatch(cloid) or not isinstance(oid, int) or oid < 0:
+            raise ValueError("invalid recovered order identity")
+        def write(conn: sqlite3.Connection) -> None:
+            row = conn.execute(
+                "SELECT exchange_order_id FROM journal_actions WHERE kind='PLACE' AND client_order_id=?",
+                (cloid.lower(),)
+            ).fetchone()
+            if row is None or (row[0] is not None and row[0] != oid):
+                raise JournalConflict("inconsistent CLOID/OID association")
+            conn.execute(
+                "UPDATE journal_actions SET exchange_order_id=? WHERE kind='PLACE' AND client_order_id=?",
+                (oid, cloid.lower()),
+            )
+        return self._submit(write)
 
     def load_all_placements(self) -> Future[tuple[StoredPlacement, ...]]:
         def read(conn: sqlite3.Connection) -> tuple[StoredPlacement, ...]:
