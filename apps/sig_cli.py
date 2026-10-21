@@ -336,6 +336,9 @@ def main(argv=None):
         elif args.command == "market":
             emit({"kind": "market_detail", **client.get_market(
                 args.market_id, tournament_id=args.tournament_id)})
+        elif args.command == "price":
+            emit({"kind": "price", **client.get_exchange_price(
+                args.exchange_id, tournament_id=args.tournament_id)})
         elif args.command == "book":
             b = client.get_order_book(args.exchange_id, tournament_id=args.tournament_id,
                                       depth=args.depth)
