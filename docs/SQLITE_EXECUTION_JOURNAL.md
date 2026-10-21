@@ -91,6 +91,10 @@ Separate database per wallet + DEX is recommended, e.g. data/state/pas-trading.s
             # Await future only on execution/control thread, not the WS handler.
             result = future.result()
 
+Explicit idle-time maintenance is available via journal.checkpoint() or
+journal.checkpoint(truncate=True), returning SQLite's busy/WAL-page/checkpointed
+counters as a Future. Do not wait for it in a market-data callback.
+
 Additional methods:
 - prepare_place(action) => Future[JournalReceipt], commits before resolution.
 - record_place_outcome(receipt, sent, reason) => Future[None].
