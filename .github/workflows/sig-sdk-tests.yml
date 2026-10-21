@@ -1,0 +1,48 @@
+name: SIG Predictions SDK contract tests
+
+on:
+  pull_request:
+    paths:
+      - "exchanges/sig_predictions/**"
+      - "market_handler/sig_predictions_adapter.py"
+      - "apps/sig_*.py"
+      - "tests/test_sig*.py"
+      - "requirements/sig_predictions.txt"
+      - "environment.sig_predictions.yml"
+      - ".github/workflows/sig-sdk-tests.yml"
+  push:
+    branches: [main, feat/sig-predictions-mainline]
+    paths:
+      - "exchanges/sig_predictions/**"
+      - "market_handler/sig_predictions_adapter.py"
+      - "apps/sig_*.py"
+      - "tests/test_sig*.py"
+      - "requirements/sig_predictions.txt"
+      - "environment.sig_predictions.yml"
+      - ".github/workflows/sig-sdk-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  contract-tests:
+    name: SDK v0.1.0 + offline SIG boundary tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: requirements/sig_predictions.txt
+      - name: Install pinned SIG SDK and core dependencies
+        run: python -m pip install -r requirements/sig_predictions.txt
+      - name: Verify wheel dependency consistency
+        run: python -m pip check
+      - name: Compile SIG Python modules
+        run: python -m compileall -q exchanges/sig_predictions apps/sig_predictions.py apps/sig_order_smoke.py tests/test_sig_generated_sdk.py
+      - name: Test SIG SDK and venue integration without credentials
+        run: python -m pytest -q tests/test_sig_generated_sdk.py tests/test_sig_predictions_adapter.py tests/test_sig_mainline.py tests/test_sig_order_smoke.py
+      # SIG's generated tests/smoke-test.py invokes mutating API endpoints.
+      # Never run it here; no secrets and no remote trading API calls.
