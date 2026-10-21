@@ -147,3 +147,20 @@ at p; ASK -> BUY NO at (1-p). SIG does **not** support post-only orders.
 Set post_only=False explicitly only after accounting for crossing risk.
 
 See [SIG integration](docs/SIG_PREDICTIONS.md).
+
+### SIG single-order smoke (attended only)
+
+After the read-only `--check` succeeds, use the safe GET-only preflight:
+
+```bash
+export SIG_PREDICTIONS_TOURNAMENT_ID='<actual tournament UUID>'
+python -m apps.sig_order_smoke --exchange-id <real exchange ID>
+```
+
+The explicitly authorized live mode submits **BUY YES, 1 share @ 0.005 SUSQies**
+and tries to cancel only that order. SIG has no post-only guarantee, so a fill
+is still possible. The command refuses stale/invalid books or other open orders,
+persists an idempotency key before POST, and stops on uncertain order state.
+
+See [SIG order/cancel smoke runbook](docs/SIG_ORDER_SMOKE.md) for live flags,
+recovery, and the remaining requirements before unattended trading.
