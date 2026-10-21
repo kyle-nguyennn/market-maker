@@ -226,17 +226,17 @@ Build post-trade cohort analyses: by market, liquidity regime, time of day, quot
 ## 10. Delivery plan and exit criteria
 
 ### OM-0 — Contracts and instrumentation [P0]
-- [ ] Define normalized event envelopes, Decimal serialization and schema versioning.
+- [x] Define an initial scoped event envelope, exact Decimal serialization and schema versioning (PR #9; target fields in Section 3 remain incomplete).
 - [ ] Add correlation IDs to decision/order/fill/risk events and record config SHA.
-- [ ] Add nonblocking bounded event journal/exporter interface and backpressure/drop accounting.
-- [ ] Unit tests for serialization, redaction, deduplication, environment/tournament isolation.
+- [x] Add bounded nonblocking **diagnostic** JSONL journal, backpressure/drop/failure accounting and offline tests (PR #9; not an exporter deployment or durable order ledger).
+- [ ] Complete event tests **including event-ID deduplication/replay** (PR #9 tests already cover serialization, redaction, invalid inputs and venue/tournament isolation).
 
 **Exit:** Replayable events and bounded-label metrics contract exist, without adding synchronous external I/O to the order hot path.
 
 ### OM-1 — Reconciliation observer [P0]
 - [ ] Integrate existing OrderManager lifecycle and venue-specific authoritative query hooks.
 - [ ] Rebuild state from startup/reconnect snapshots and replay buffered updates.
-- [ ] Detect missing fills, dangling orders, local/account cash/position mismatches.
+- [x] Implement mismatch-detection primitives for fill IDs/coverage, unknown orders, cash and positions (PR #9); PAS runner separately checks SQLite fill/position and orders (PR #11).
 - [ ] Implement idempotent recovery from ambiguous place/cancel responses.
 
 **Exit:** Deterministic tests demonstrate recovery across duplicate/out-of-order fills, partial fills, cancel races and unknown timeouts; no unverified state resumes quoting.
@@ -245,7 +245,7 @@ Build post-trade cohort analyses: by market, liquidity regime, time of day, quot
 - [ ] Consume risk-gateway decisions and independently audit exposures.
 - [ ] Define ACTIVE/DEGRADED/PAUSED/STOPPED transition policy and operator override permissions.
 - [ ] Wire fail-closed trading gate to stale-feed, reconciliation and hard-risk events.
-- [ ] Implement safe cancel/verify runbook and separate heartbeat/dead-man monitor.
+- [ ] Complete safe cancel/verify and **deployed independent** heartbeat/dead-man monitor (PR #9 implements one-shot heartbeat tools and cancel planning; PR #11 implements eligible venue-side dead-man refresh with documented limitations; external scheduling/paging remain absent).
 - [ ] Validate restart, feed outage, exporter outage, venue outage and kill-switch behavior.
 
 **Exit:** Fault-injection passes; trading cannot silently continue while account/order state is unknown; dashboard outage never disables pre-trade controls.
@@ -268,7 +268,7 @@ Build post-trade cohort analyses: by market, liquidity regime, time of day, quot
 
 ### OM-5 — Reports and runbooks [P2]
 - [ ] Morning health + overnight exposure summary; daily performance/score recap.
-- [ ] Document startup, deployment, rollback, reconnect, reconciliation, unexpected fill, throttle, pause and emergency stop.
+- [ ] Complete operator runbooks for all venues/incidents (PAS MVP-0 runbook covers preflight/recovery; rollback, deployed alerts, incident response and SIG runbooks remain incomplete).
 - [ ] Maintain signed-off preflight checklist and dry-run recovery evidence.
 - [ ] Feed actual operational findings into strategy research and subsequent workstreams.
 
@@ -304,26 +304,29 @@ Before considering an unattended scored bot:
 | Event replay of same fill | P&L/exposure unchanged after dedupe |
 | Kill switch with disconnected venue | local intent gate stops; outstanding venue orders remain explicitly **unverified** |
 
-## 13. Suggested source layout (to be finalized after integration)
+## 13. Implemented source layout versus proposed future work
 
 ~~~
 observability/
-    events.py           # versioned, venue-neutral event envelopes
-    publisher.py        # bounded, nonblocking emission
-    metrics.py          # bounded-cardinality metrics
-    journal.py          # durable append-only event store
-    reconciliation.py   # observer; coordinate with execution/order_manager.py
-    supervisor.py       # separate watchdog and alert/control integration
-    analytics/
-        pnl.py
-        execution.py
-        calibration.py
-deploy/monitoring/      # Compose and dashboard provisioning
-tests/observability/    # deterministic failure/replay tests
-docs/OPERATIONS_MONITORING.md
+    events.py              # MERGED: scoped/redacted event envelope
+    journal.py             # MERGED: async best-effort diagnostic JSONL
+    reconciliation.py      # MERGED: scoped snapshot observer
+    supervisor.py          # MERGED: standalone gate; NOT PAS runner-wired
+    watchdog.py            # MERGED: heartbeat write/check primitives
+apps/ops_watchdog.py       # MERGED: one-shot external checker
+tests/test_observability_p0.py # MERGED: offline fault and serialization tests
+execution/sqlite_journal.py    # MERGED: durable execution WAL, separate
+execution/durable_dispatch.py  # MERGED: guarded async send primitive
+execution/pas_mvp0_runtime.py  # MERGED: experimental PAS single-process runner
+
+# PROPOSED / NOT IMPLEMENTED:
+observability/metrics.py
+observability/analytics/{pnl,execution,calibration}.py
+deploy/monitoring/         # Prometheus, Grafana, Alertmanager
 ~~~
 
-This is a proposed layout, not a claim that these files currently exist. Keep venue-specific serializers/exchange API calls in their adapters. Prefer small composable packages; do not proliferate infrastructure before OM-0–OM-2 are proven.
+Future venue-specific serializers and exchange API calls belong in their adapters.
+Do not proliferate infrastructure before integrated OM-0/OM-1/OM-2 controls are verified.
 
 ## 14. Review cadence and ownership
 
@@ -337,5 +340,6 @@ This is a proposed layout, not a claim that these files currently exist. Keep ve
 
 - Existing implementation: README.md, docs/PERPETUAL_ALPHA.md, execution/order_manager.py, notes/20261015_perpetual_alpha_competition_rules.md (the dated notes contain earlier pa information; use active corrected pas configuration).
 - SIG contract notes on sig-predictions-scaffold: docs/SIG_PREDICTIONS.md.
-- Existing order lifecycle draft: PR #6, feat/perpetual-alpha-order-risk-quoter.
-- This document is a **workstream specification only**. All unchecked tasks are unimplemented/unverified until demonstrated by code, tests and venue evidence.
+- Merged implementation references: PR #6 (order/risk), PR #9 (OM primitives), PR #10 (SQLite WAL), PR #11 (PAS MVP-0).
+- Open SIG mainline adapter: PR #12; no complete SIG monitoring runner is shipped.
+- This document combines a **target workstream specification** with verified implementation status. Unchecked tasks remain incomplete; some already have tested primitives but lack real send-path integration, deployment, live fault evidence or SIG coverage.
