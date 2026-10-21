@@ -235,6 +235,8 @@ def test_mocked_signed_order_fill_then_nonflat_restart(tmp_path):
         cloid = actions[0].intent.client_order_id
         bot._reconcile()
         assert bot.manager.ready and cloid in bot.manager.live_orders
+        assert journal.load_all_placements().result()[0].exchange_order_id == 42
+        assert journal.load_all_placements().result()[0].dispatch_state == "SENT"
 
         # Fill happens while the Quoter is not doing any work.
         venue.open_orders.clear()
