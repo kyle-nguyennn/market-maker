@@ -1,0 +1,71 @@
+name: PAS MVP-0 read-only account shape probe
+
+on:
+  pull_request:
+    paths:
+      - "apps/pas_mvp0.py"
+      - "execution/pas_mvp0_runtime.py"
+      - "tests/test_pas_mvp0.py"
+      - ".github/workflows/pas-mvp0-readonly.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  account-shape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -r requirements/hyperliquid.txt
+      - name: Inspect public scored account response shapes (no credentials, no amounts logged)
+        run: |
+          python - <<'PY'
+          from dotenv import dotenv_values
+          from exchanges.hyperliquid.config import HyperliquidVenueConfig
+          from exchanges.hyperliquid.client import HyperliquidVenueClient
+          import json
+          account = dotenv_values(".env.template").get("PERPETUAL_ALPHA_TEAM_WALLET")
+          assert account and account.startswith("0x"), "missing public account address"
+          cfg = HyperliquidVenueConfig.from_environment(dex="pas", environ={})
+          client = HyperliquidVenueClient(cfg)
+          perps = client.query_positions(account)
+          spot = client.query_spot_balance(account)
+          active = client.query_active_asset_data(account, "BTC")
+          orders = client.query_open_orders(account)
+          fills = client.query_fills(account)
+          def shape(d):
+              return sorted(d.keys()) if isinstance(d, dict) else type(d).__name__
+          print("PAS account response keys:", shape(perps), flush=True)
+          print("PAS account marginSummary keys:", shape(perps.get("marginSummary", {})), flush=True)
+          print("PAS asset position count:", len(perps.get("assetPositions", [])), flush=True)
+          print("PAS spot response keys:", shape(spot), flush=True)
+          print("PAS activeAssetData keys:", shape(active), flush=True)
+          print("PAS maxTradeSzs type:", type(active.get("maxTradeSzs")).__name__, flush=True)
+          print("PAS open orders count:", len(orders), "fills count:", len(fills), flush=True)
+          from decimal import Decimal
+          from hyperliquid.exchange import Exchange
+          assert hasattr(Exchange, "schedule_cancel"), "installed SDK missing dead-man API"
+          caps = active.get("maxTradeSzs", [])
+          assert isinstance(caps, list) and len(caps) == 2
+          print("PAS margin equity positive:", Decimal(perps["marginSummary"]["accountValue"]) > 0, flush=True)
+          print("PAS buy/sell size capacities positive:", [Decimal(x) > 0 for x in caps], flush=True)
+          print("PAS API SDK supports exchange-side dead-man:", True, flush=True)
+          balances = spot.get("balances", [])
+          usdp = next((b for b in balances if b.get("coin") == "USDP"), None)
+          print("PAS USDP balance entry exists:", usdp is not None, flush=True)
+          print("PAS USDP spot total positive:", (
+              Decimal(usdp.get("total", "0")) > 0 if usdp else False
+          ), flush=True)
+          try:
+              mode = client._read().query_user_abstraction_state(account)
+              print("PAS userAbstraction result:", mode, flush=True)
+          except Exception as exc:
+              print("PAS userAbstraction query unavailable:", type(exc).__name__, flush=True)
+          print("No private key or signed action. No balances or order content printed.")
+          PY
