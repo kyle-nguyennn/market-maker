@@ -168,7 +168,7 @@ This matters because default portfolio endpoints do not accept an arbitrary
 
 Implemented:
 
-1. authenticated v1 REST transport;
+1. authenticated v1 REST calls exclusively via the published Scalar Python SDK;
 2. market discovery and exchange price/book reads;
 3. exact single-order payload and response normalization;
 4. batch and atomic multi-leg placement;
@@ -250,35 +250,49 @@ interpretation, contact predictionscup@sig.com before placing scored orders.
 
 Source: https://predictionscup.com/rules/
 
-## Published Scalar Python SDK integration (2026-10-21)
+## Scalar Python SDK — sole HTTP transport (2026-10-21)
 
-The generated Super Market SDK was released as **`super-market==0.1.0`**.
-Install it only through `requirements/sig_predictions.txt` or
-`environment.sig_predictions.yml` (NOT the shared or Hyperliquid requirements).
-Import path: `from super_market import SuperMarketAPI`.
+The official-contract generated SDK is published as `super-market==0.1.0`,
+Python import `super_market`. Install it via `requirements/sig_predictions.txt`
+or `environment.sig_predictions.yml` (not Hyperliquid/core).
 
-The SIG adapter and order lifecycle are still our application code.
-`SigPredictionsSDKReadClient` wraps generated SDK models for a GET-only
-subset of the existing venue facade, normalizing markets `data` into
-`markets` and decoding versioned exchange books through the existing
-`SigPredictionsVenueClient.get_order_book` implementation.
+The handwritten urllib REST wrapper and separate read-only SDK client have
+been **removed**. All calls in `SigPredictionsVenueClient` delegate directly
+to the Scalar SDK's typed resources: account, markets, tournaments, exchanges,
+order books, single/batch/multi-leg orders, targeted/scoped cancellation,
+orders and fills, portfolio, P&L, and realtime token minting. SDK results are
+normalized to our existing venue-neutral types and smoke interfaces.
 
-To compare authenticated REST reads without any trading:
+Read-only authenticated diagnostics:
 
 ```bash
 python -m pip install -r requirements/sig_predictions.txt
-python -m apps.sig_predictions --check --sdk
-python -m apps.sig_predictions --check --sdk --tournament-slug midterm-elections
+python -m apps.sig_predictions --check
+python -m apps.sig_predictions --check --tournament-slug midterm-elections
 ```
 
-The Scalar SDK is constructed with **`max_retries=0`** and our existing
-`SIG_PREDICTIONS_API_KEY`, never relying on the SDK's `BEARER_AUTH` default.
-`--sdk` refuses signed requests regardless of credentials. No API keys are
-placed in CI or source control.
+The old `--sdk` switch is still accepted as a backward-compatible alias,
+but it no longer switches transports.
 
-**Remaining migration:** Adapt and parity-test all order endpoints, SDK
-typed errors and error-code payloads, pagination, HTTP 409/429/502/503
-uncertainty handling, partial fills and cancel races before changing
-`apps.sig_order_smoke` or unattended trading. Do not enable SDK implicit
-retries on POST/DELETE. The existing supervised submit/cancel smoke uses
-its earlier tested standard-library transport for now.
+For the attended **single order submit/cancel** diagnostic, follow
+[docs/SIG_ORDER_SMOKE.md](SIG_ORDER_SMOKE.md). That script now also uses
+the generated SDK; it still requires explicit live opt-in and fsyncs the
+idempotency key **before** calling the SDK. An ambiguous POST preserves the
+journal and **never** retries automatically.
+
+**SDK retry policy:** Every client must use `max_retries=0`, including
+injected clients. The SDK otherwise retries even some 409/429/5xx/network
+responses, which is unsafe for uncertain signed-order state. SIG HTTP
+status errors are normalized into `SigApiError`; transport exceptions
+remain visible to recovery code. Do not use `SigPredictionsVenueClient`
+with `allow_trading=True` outside an attended, risk-controlled operation.
+
+Offline tests use the generated SDK with an HTTPX mock transport to cover
+request serialization, auth, create, cancel, status, pagination, fills and
+zero retries. No real orders are placed by CI.
+
+**Remaining before unattended trading:** account/tournament cash and
+correlated-event exposure risk, complete authoritative fill-history coverage,
+independent persistence and resynchronization, websocket/realtime revision
+monitoring, rate budgets, and independent alerting. SDK transport migration
+does **not** constitute approval to run a scored autonomous market maker.
