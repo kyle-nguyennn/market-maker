@@ -261,7 +261,7 @@ def args_parser(argv=None):
             a.add_argument("--search")
     td = s.add_parser("tournament", help="inspect exact tournament slug and its scoped balance")
     td.add_argument("slug")
-        m = s.add_parser("market", help="market info and exchange IDs")
+    m = s.add_parser("market", help="market info and exchange IDs")
     m.add_argument("market_id")
     m.add_argument("--tournament-id", default=os.getenv("SIG_PREDICTIONS_TOURNAMENT_ID"))
     pp = s.add_parser("price", help="exchange price snapshot in selected tournament context")
