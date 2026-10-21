@@ -126,6 +126,15 @@ def test_dex_and_decimal_validation_fail_closed(tmp_path):
         assert j.load_recovery().result(timeout=3).unresolved == ()
 
 
+def test_explicit_off_path_checkpoint_is_available(tmp_path):
+    with journal(tmp_path) as j:
+        j.prepare_place(place()).result(timeout=3)
+        busy, wal_pages, checkpointed = j.checkpoint().result(timeout=3)
+        assert busy == 0
+        assert wal_pages >= 0 and checkpointed >= 0
+        assert j.load_recovery().result(timeout=3).unresolved
+
+
 def test_closed_journal_rejects_new_actions(tmp_path):
     j = journal(tmp_path)
     j.close()
