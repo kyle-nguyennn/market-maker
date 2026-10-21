@@ -188,3 +188,47 @@ Next runtime layer:
 5. quote-cycle orchestration: cancel-all -> confirmed 200 -> atomic multi-leg
    repost;
 6. strategy/risk integration using tournament balance and positions.
+
+## Mainline migration (2026-10-21)
+
+The former PR #2 scaffold is ported onto mainline without replacing the
+merged, fail-closed OrderManager from PR #6.
+
+- Shared OrderManager accepts canonical contract IDs like SIG_EXCHANGE:36.
+- 128-bit generated order identity can also be used as SIG idempotency key.
+- ExecutionStatus now covers partial fills, cancels and accepted NOOP.
+- SIG client defaults to read-only; signed requests require explicit
+  allow_trading=True. This is a belt, **not a pretrade risk gateway**.
+- CLI python -m apps.sig_predictions --check uses authenticated GET reads.
+- SIG Midterm Elections trading ends November 4, noon ET.
+
+### Important differences from Hyperliquid
+
+| Aspect | Hyperliquid | SIG Predictions |
+| --- | --- | --- |
+| Instrument | logical BTC, ETH | SIG_EXCHANGE:<exchange_id> |
+| Quote | linear perp bid/ask | YES probability; ASK -> BUY NO at (1-p) |
+| Post-only | supported ALO | unsupported |
+| Size | Decimal precision | positive integer shares |
+| Risk | leverage/funding/margin | SUSQie cash, binary event correlations |
+| Limit price | asset-specific | 0.005–0.995, tick 0.005 |
+| Idempotency | venue CLOID | required opaque key, finite retention |
+| Streaming | Hyperliquid WS | best-effort batched realtime and REST resync |
+
+SIG October 17 changelog: multi-leg 502 ORDER_STATUS_UNKNOWN requires
+authoritative reconciliation or identical-key retry; completed request
+responses are stored for 48h, after which 409 IDEMPOTENCY_KEY_EXPIRED
+prevents replay. Do not blindly create a new key for an unknown order.
+Rate budget is 100 reads / 30 writes per minute per ordinary account.
+Source: https://sig.thesuper.market/docs/changelog
+
+### Remaining before unattended trading
+
+1. Check participant API key using read-only CLI; resolve tournament scope.
+2. Implement realtime token/socket/revisions and REST resynchronization.
+3. Enforce SIG-specific cash/position/scenario risk using server state.
+4. Persist idempotency keys before POST and wire order/fill/cancel events.
+5. Test lost ACK, partial fills, 409/429/502/503, restart recovery.
+6. Then explicitly enable signed actions behind the actual send gateway.
+
+Until those are done, do not deploy an unattended scored bot.
