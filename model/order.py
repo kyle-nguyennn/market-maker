@@ -12,7 +12,10 @@ class Side(str, Enum):
 
 class ExecutionStatus(str, Enum):
     RESTING = "RESTING"
+    PARTIALLY_FILLED = "PARTIALLY_FILLED"
     FILLED = "FILLED"
+    CANCELLED = "CANCELLED"
+    NOOP = "NOOP"
     REJECTED = "REJECTED"
 
 
@@ -43,7 +46,7 @@ class ExecutionReport:
     """Venue-independent result of one order operation."""
 
     status: ExecutionStatus
-    exchange_order_id: int | None = None
+    exchange_order_id: str | int | None = None
     filled_size: Decimal | None = None
     average_price: Decimal | None = None
     error: str | None = None
