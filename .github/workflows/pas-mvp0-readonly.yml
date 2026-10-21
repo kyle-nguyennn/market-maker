@@ -48,5 +48,13 @@ jobs:
           print("PAS activeAssetData keys:", shape(active), flush=True)
           print("PAS maxTradeSzs type:", type(active.get("maxTradeSzs")).__name__, flush=True)
           print("PAS open orders count:", len(orders), "fills count:", len(fills), flush=True)
+          from decimal import Decimal
+          from hyperliquid.exchange import Exchange
+          assert hasattr(Exchange, "schedule_cancel"), "installed SDK missing dead-man API"
+          caps = active.get("maxTradeSzs", [])
+          assert isinstance(caps, list) and len(caps) == 2
+          print("PAS margin equity positive:", Decimal(perps["marginSummary"]["accountValue"]) > 0, flush=True)
+          print("PAS buy/sell size capacities positive:", [Decimal(x) > 0 for x in caps], flush=True)
+          print("PAS API SDK supports exchange-side dead-man:", True, flush=True)
           print("No private key or signed action. No balances or order content printed.")
           PY
