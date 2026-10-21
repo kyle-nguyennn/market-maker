@@ -76,6 +76,8 @@ class SafetySupervisor:
         self.state = TradingState.PAUSED
         self.reason = reason
         self._reconciled_at = None
+        self._feed_at = None
+        self._heartbeat_at = None
         self.manager.start_recovery(reason)
 
     def stop(self, reason: str = "operator_stop") -> None:
@@ -121,8 +123,11 @@ class SafetySupervisor:
                 return RiskDecision(False, f"stale_{label}")
         if not self.manager.ready:
             return RiskDecision(False, "order_state_unreconciled")
-        if self.risk_killed():
-            return RiskDecision(False, "risk_kill_switch")
+        try:
+            if self.risk_killed():
+                return RiskDecision(False, "risk_kill_switch")
+        except Exception:
+            return RiskDecision(False, "risk_state_unavailable")
         return RiskDecision(True)
 
     def arm(self, *, operator_authorized: bool) -> RiskDecision:
@@ -156,11 +161,16 @@ class SafetySupervisor:
         safety = self.check()
         if not safety.allowed:
             return safety
-        verdict = self.pretrade_check(intent, risk_snapshot)
+        try:
+            verdict = self.pretrade_check(intent, risk_snapshot)
+            killed = self.risk_killed()
+        except Exception:
+            self.pause("pretrade_check_failed")
+            return RiskDecision(False, "pretrade_check_failed")
         if not isinstance(verdict, RiskDecision):
             self.pause("invalid_risk_response")
             return RiskDecision(False, "invalid_risk_response")
-        if self.risk_killed():
+        if killed:
             self.pause("risk_kill_switch")
             return RiskDecision(False, "risk_kill_switch")
         return verdict
