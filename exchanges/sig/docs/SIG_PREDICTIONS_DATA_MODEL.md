@@ -30,6 +30,46 @@ Market (container)
         └── contract_details: type-specific data
 ~~~
 
+### Entity relationship diagram
+
+The same **Market** exposes two separate views: tradable Exchanges and a tree of settlement conditions.
+
+```mermaid
+flowchart TB
+    M["Market<br/>(prediction question)"]
+
+    subgraph Trading["Trading structure: what can I trade?"]
+        E["Exchange(s)<br/>1 for binary; N for multi-outcome"]
+        S["YES / NO trading sides<br/>(on each Exchange)"]
+        B["Order book, prices, trades<br/>(scoped to public or tournament)"]
+        E --> S
+        E --> B
+    end
+
+    subgraph Resolution["Resolution structure: how does it settle?"]
+        R["Root MarketNode"]
+        C["Contract node (leaf)<br/>atomic settlement condition"]
+        O["Operator node<br/>AND / OR / NOT / IF"]
+        O2["Optional nested operator node"]
+        C2["Additional contract node (leaf)"]
+        R -->|"simple market: root is a contract"| C
+        R -->|"composite market: root is an operator"| O
+        O -->|"child"| C
+        O -->|"child"| C2
+        O -.->|"may nest operators"| O2
+        O2 -->|"child"| C2
+    end
+
+    M -->|"contains 1..N"| E
+    M -->|"has one root"| R
+```
+
+- **Binary market:** one Exchange with YES/NO trading sides, rather than separate YES and NO Exchanges.
+- **Multi-outcome market:** multiple Exchanges labeled by outcome; options are not necessarily mutually exclusive.
+- **Resolution tree:** one root MarketNode; the root can itself be a Contract node, or an Operator node with child MarketNodes. Contract nodes describe settlement conditions, **not** order-book instruments.
+- **Identifiers:** use `exchangeId` for trading; `contract_id` equals its `node_id` in the returned node tree, but is not an `exchangeId`. Do not infer one-to-one mapping of contract leaves to Exchanges.
+- **Trading context:** the same Exchange can have distinct books/prices in different tournaments; `tournamentId` selects the intended trading scope.
+
 **Two separate structures:** `exchanges[]` answers **"what can I trade and at what price?"**; the node tree answers **"what must happen for it to pay out?"**. Orders, trades, and positions target `exchangeId`, not `marketId` or `contract_id`.
 
 The API's use of *contract* in two places is potentially confusing: an **Exchange** is the *tradable contract*, whereas a **Contract node** is a *resolution/condition object*. Treat them as separate data-model types even though they are related.
