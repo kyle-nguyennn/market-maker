@@ -1,7 +1,7 @@
 # Workstream: Operations & Monitoring (OM)
 
 **Project:** market-maker  
-**Status:** Planned — specification and implementation backlog only (no production monitoring implied)  
+**Status:** Partially implemented — OM-0/1/2 primitives merged in PR #9; durable SQLite execution and PAS MVP runner merged in PRs #10/#11. No end-to-end monitoring deployment or unattended-trading signoff.  
 **Scope:** Shared across Perpetual Alpha / Hyperliquid and SIG Predictions Cup  
 **Created:** 2026-10-21 (SGT)  
 **Priority:** P0 for safety/reconciliation, P1 for telemetry and strategy analytics, P2 for reports and polish  
@@ -48,12 +48,20 @@ Independent watchdog + reconciliation controller
        -> trading gate / cancel / manual escalation
 ~~~
 
+**The diagram above is the target architecture, not a deployed topology.** Prometheus/Grafana/Alertmanager and Postgres/Parquet analytics are not deployed, and the PAS runner does not currently publish to the generic OM event journal.
+
 Existing repository anchors:
 - docs/PERPETUAL_ALPHA.md: DEX-aware Hyperliquid integration and recovery gaps.
-- execution/order_manager.py: venue-neutral order manager; main-branch reconcile() is currently unimplemented. Active draft PR #6 develops a fail-closed lifecycle. **Coordinate** with that branch rather than reimplementing an incompatible order lifecycle.
-- risk/: pre-trade risk gateway remains source of truth for allowable actions; OM supplies observed account/market state and supervises safety policy.
+- execution/order_manager.py: merged fail-closed venue-neutral lifecycle (PR #6), including order reservations, uncertain outcomes and explicit resynchronization. Preserve this canonical state machine.
+- risk/risk_manager.py and execution/safe_gateway.py: synchronous pre-trade risk enforcement; monitoring can supervise but must not replace the actual send-path gateway.
 - exchanges/hyperliquid/: venue-specific order, book, funding and account normalization.
-- SIG Predictions adapter: documented in docs/SIG_PREDICTIONS.md on sig-predictions-scaffold; not yet assumed merged to main.
+- SIG Predictions adapter: PR #12 (open at audit) ports the older SIG scaffold in PR #2 onto the current core. SIG monitoring and scored runtime integration are not merged/deployed.
+
+**Merged implementation baseline (2026-10-21):**
+- **PR #9:** `observability/events.py` (scope, redaction, Decimal), `observability/journal.py` (bounded async **diagnostic** JSONL; NOT transactionally durable), `observability/reconciliation.py` (scoped snapshot observer), `observability/supervisor.py` (`PAUSED/ACTIVE/STOPPED`, operator re-arm), `observability/watchdog.py` and `apps/ops_watchdog.py` (heartbeat writer and one-shot checker). Offline tests: `tests/test_observability_p0.py`. Details: `docs/OPERATIONS_MONITORING_P0_MVP.md`.
+- **PR #10:** `execution/sqlite_journal.py` is the **durable** single-writer SQLite WAL order/fill/kill-switch ledger. `execution/durable_dispatch.py` commits prepared placements before passing them to the risk-checked gateway. These are execution persistence components, **not** replacements for diagnostic JSONL.
+- **PR #11:** `execution/pas_mvp0_runtime.py` and `apps/pas_mvp0.py` implement one-process PAS startup and periodic REST reconciliation, single-owner OMS, background quoter, SQLite journal, and trading gates. Scored unified equity is calculated from **USDP spot total plus DEX-scoped unrealized P&L**. Default is dry-run; see `docs/PAS_MVP0_RUNBOOK.md`.
+- **Integration gap:** PAS MVP-0 uses its own reconciliation gate and the existing `SafeExecutionGateway`/SQLite journal; it does **not** instantiate the generic `SafetySupervisor`, `AccountReconciler`, `AsyncEventJournal`, or heartbeat writer. An independent scheduled watchdog and external alert delivery are not connected. These implemented primitives must not be mistaken for deployed controls.
 
 Dependencies: OrderManager state machine, fill/position normalization, streaming resync, and venue-scoped risk limits. This workstream is distinct from execution/risk gateway development, but shares its contracts.
 
@@ -63,7 +71,7 @@ Dependencies: OrderManager state machine, fill/position normalization, streaming
 
 ### 3.1 Shared event envelope
 
-Required fields on every durable event:
+**Target contract** for the completed event pipeline (the current `OperationalEvent` does not yet contain every field below):
 
 | Field | Purpose |
 | --- | --- |
@@ -78,6 +86,8 @@ Required fields on every durable event:
 | model_version, config_hash, deployment_sha | Reproduce the decision and runtime |
 | payload_schema_version | Event schema compatibility |
 
+**Current PR #9 event schema:** `OperationalEvent.to_record()` emits `schema_version=1`, `event_id`, `correlation_id`, `event_type`, `occurred_at`, sanitized `scope` (venue, environment, hashed account, tournament), `config_hash`, `deployment_sha`, and `payload`. Venue-event timestamp, `model_version`, a top-level `instrument`, and the specification's exact `observed_at_utc` / `payload_schema_version` names are **not present as top-level fields**. Version or map the envelope explicitly before implementing downstream consumers. No indexed event-ID deduplication/replay contract exists.
+
 Payloads use **Decimal** for persisted monetary values/prices/quantities (serialize exact strings); numeric observability aggregates can use bounded floating-point representations. Never make Grafana/Prometheus a source of truth for balances.
 
 ### 3.2 Decision journal
@@ -89,7 +99,7 @@ The raw decision/event store must support deterministic replays and comparisons 
 ### 3.3 Instrumentation split
 
 - Metrics: bounded-label Prometheus counters, gauges, histograms for dashboards and alert evaluation.
-- Structured append-only events: order/fill/risk/decision/reconciliation history in Postgres or Parquet.
+- Structured append-only events: **target** order/fill/risk/decision/reconciliation history in Postgres or Parquet; **current** diagnostic sink is best-effort async JSONL, with separate transactional SQLite WAL for execution identities/fills.
 - Application logs: searchable errors and lifecycle diagnostics containing correlation IDs.
 - Optional distributed traces only when diagnosing bottlenecks; not a requirement for MVP.
 
@@ -123,7 +133,7 @@ Use durable client order IDs/idempotency keys, with a bounded replay/retention p
 
 ### Circuit-breaker transitions
 
-Suggested explicit states:
+Target state diagram (the merged generic supervisor currently implements only `PAUSED`, `ACTIVE`, `STOPPED`; `STARTUP`, `RECONCILING`, and `DEGRADED` are not enum states):
 
 ~~~
 STARTUP -> RECONCILING -> ACTIVE
@@ -150,7 +160,7 @@ Safety invariants:
 
 ## 6. Perpetual Alpha / Hyperliquid-specific monitors
 
-**Scored venue correction:** The participant guide and active development branch identify scored DEX **pas** (USDP, Hyperliquid testnet), whereas practice is **par** (USDPR). Older notes/main-branch references to scored **pa** are stale. All queries, alerts, account checks and identifiers must explicitly carry DEX; validate actual configured profile at launch. Do not treat earlier pa probe results as pas readiness.
+**Scored venue correction:** The participant guide and merged mainline identify scored DEX **pas** (USDP, Hyperliquid testnet), whereas practice is **par** (USDPR). Older historical references to scored **pa** are stale. All queries, alerts, account checks and identifiers must explicitly carry DEX; validate actual configured profile at launch. Do not treat earlier pa probe results as pas readiness.
 
 Capture:
 - DEX-scoped positions, cash/equity (account-mode aware), market capacity (availableToTrade/maxTradeSzs), open orders and fills.
