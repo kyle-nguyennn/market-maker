@@ -15,7 +15,9 @@ This procedure exercises signed single-order submission and targeted cancel.
 ## Commands
 
 ```bash
-export SIG_PREDICTIONS_TOURNAMENT_ID='<actual tournament UUID>'
+# Retrieve the tournament UUID without any trading action:
+python -m apps.sig_predictions --check --tournament-slug midterm-elections
+export SIG_PREDICTIONS_TOURNAMENT_ID='<UUID reported above>'
 python -m apps.sig_predictions --check --exchange-id <exchange-id>
 
 # No POST or DELETE; validates scope, account access, book and open orders
@@ -30,7 +32,7 @@ python -m apps.sig_order_smoke --exchange-id <exchange-id> \
   --live --confirm-exchange-id <exchange-id> --accept-fill-risk --recover
 ```
 
-Resolve a tournament slug to its UUID using `SigPredictionsVenueClient.get_tournament(slug)`.
+The `--tournament-slug midterm-elections` diagnostic calls `get_tournament` and prints its returned UUID when present.
 Resolve exchange IDs using `list_markets` / `get_market`; the IDs shown in older unit
 tests are **examples**, not authorized targets.
 
