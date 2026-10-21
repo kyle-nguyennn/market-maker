@@ -85,6 +85,83 @@ def parse_phoenix_message(raw: str) -> tuple[str | None, str, str, dict, str | N
             topic, payload, event)
 
 
+def revision_alerts(raw_broadcast: dict, revisions: dict[str, int]) -> list[tuple[str, str]]:
+    """SIG market/account batches carry revision and previousRevision."""
+    alert: list[tuple[str, str]] = []
+    kind, data = raw_broadcast.get("event"), raw_broadcast.get("payload")
+    if not isinstance(data, dict):
+        return [("payload", "malformed broadcast")]
+
+    def inspect(name: str, batch: object) -> None:
+        if not isinstance(batch, dict):
+            alert.append((name, "malformed batch"))
+            return
+        delivery = batch.get("delivery")
+        if not isinstance(delivery, dict):
+            alert.append((name, "missing delivery metadata"))
+            return
+        rev, prev = delivery.get("revision"), delivery.get("previousRevision")
+        if not isinstance(rev, int) or not isinstance(prev, int):
+            alert.append((name, "invalid revisions"))
+            return
+        last = revisions.get(name)
+        if last is None or rev > last:
+            revisions[name] = rev
+        if batch.get("resyncRequired"):
+            alert.append((name, "resyncRequired"))
+        elif last is not None and prev > last:
+            alert.append((name, f"topic revision gap prev={prev} last={last}"))
+        if any(isinstance(t, dict) and t.get("sequence") is None
+               for t in batch.get("trades", [])):
+            alert.append((name, "trade has null engine sequence"))
+
+    if kind == "markets_batch":
+        for market in data.get("markets", []):
+            if isinstance(market, dict):
+                inspect(str(market.get("marketId")), market.get("batch"))
+    elif kind in {"market_batch", "account_batch"}:
+        inspect("account" if kind == "account_batch" else "market", data)
+    return alert
+
+
+def rest_resync(client: SigPredictionsVenueClient, args, *,
+                reason: str, market_id: str | None = None) -> None:
+    """Bounded authoritative SDK reads after join, gap, errors and periodically.
+
+    Aggregate discovery is not a full book snapshot. Print this explicitly,
+    so the diagnostic CLI is never mistaken for a trading-ready book cache.
+    """
+    try:
+        if args.user:
+            positions = client.get_positions(tournament_slug=getattr(args, "tournament_slug", None))
+            emit({"kind": "rest_resync", "reason": reason, "resource": "positions",
+                  "tournamentSlug": getattr(args, "tournament_slug", None), "data": positions})
+            orders = client.list_orders(status="open", tournament_id=args.tournament_id, limit=50)
+            emit({"kind": "rest_resync", "reason": reason, "resource": "open_orders",
+                  "data": orders["orders"], "hasMore": orders["hasMore"]})
+        elif market_id or getattr(args, "market_id", None):
+            mid = market_id or args.market_id
+            book = client._call(client.sdk.markets.list_orderbook, id=str(mid),
+                                **client._options(depth=200, tournament_id=args.tournament_id))
+            emit({"kind": "rest_resync", "reason": reason, "resource": "market_orderbook",
+                  "marketId": mid, "data": book})
+        elif getattr(args, "exchange_id", None):
+            book = client.get_order_book(args.exchange_id, depth=200)
+            emit({"kind": "rest_resync", "reason": reason, "resource": "exchange_orderbook",
+                  "exchangeId": args.exchange_id, "asOf": vars(book.as_of) if book.as_of else None,
+                  "bids": [vars(x) for x in book.bids],
+                  "asks": [vars(x) for x in book.asks]})
+        else:
+            markets = client.list_markets(limit=50, tournament_id=args.tournament_id, status="open")
+            emit({"kind": "rest_resync", "reason": reason, "resource": "market_discovery_first_page",
+                  "count": len(markets["markets"]), "pagination": markets["pagination"],
+                  "warning": "not a complete multi-market book snapshot; retrieve individual books before trading"})
+    except Exception as exc:
+        emit({"kind": "rest_resync_failed", "reason": reason,
+              "errorType": type(exc).__name__,
+              "warning": "authoritative state not verified; do not trade on this realtime feed"})
+
+
 async def listen_once(client: SigPredictionsVenueClient, args, *, deadline: float,
                       count: int) -> int:
     """One token and socket session; caller handles expiring credentials/reconnect."""
@@ -115,11 +192,16 @@ async def listen_once(client: SigPredictionsVenueClient, args, *, deadline: floa
         # does not mean authenticated channel membership.
         subscribed = False
         next_heartbeat = time.monotonic() + 20
+        next_resync = time.monotonic() + getattr(args, "resync_seconds", 90)
+        revisions: dict[str, int] = {}
         while time.monotonic() < session_end:
             if time.monotonic() >= next_heartbeat:
                 ref = str(int(time.monotonic() * 1000))
                 await ws.send(json.dumps([None, ref, "phoenix", "heartbeat", {}]))
                 next_heartbeat = time.monotonic() + 20
+            if subscribed and time.monotonic() >= next_resync:
+                rest_resync(client, args, reason="periodic")
+                next_resync = time.monotonic() + getattr(args, "resync_seconds", 90)
             wait = max(0.05, min(2.0, next_heartbeat - time.monotonic(),
                                  session_end - time.monotonic()))
             try:
@@ -133,6 +215,8 @@ async def listen_once(client: SigPredictionsVenueClient, args, *, deadline: floa
                 subscribed = True
                 emit({"kind": "subscribed", "channel": topic,
                       "at": datetime.now(UTC).isoformat()})
+                rest_resync(client, args, reason="join/reconnect")
+                next_resync = time.monotonic() + getattr(args, "resync_seconds", 90)
                 continue
             if received_topic == "phoenix" or event == "phx_reply":
                 continue
@@ -140,10 +224,19 @@ async def listen_once(client: SigPredictionsVenueClient, args, *, deadline: floa
                 raise RuntimeError("received events before authenticated subscription ACK")
             if event in ("phx_error", "phx_close"):
                 raise RuntimeError("SIG Realtime channel closed or rejected; re-sync required")
+            if event == "system" and payload.get("status") == "error":
+                raise RuntimeError("SIG Realtime system reported channel error")
+            if event != "broadcast":
+                continue
             count += 1
             emit({"kind": "realtime_event", "receivedAt": datetime.now(UTC).isoformat(),
-                  "channel": received_topic, "event": event, "data": payload,
-                  "sequenceStatus": "best-effort; reconcile missed updates through REST"})
+                  "channel": received_topic, "event": payload.get("event"),
+                  "data": payload.get("payload"),
+                  "sequenceStatus": "best-effort; REST resync after gaps, reconnects and periodically"})
+            for name, reason in revision_alerts(payload, revisions):
+                emit({"kind": "resync_required", "topic": name, "reason": reason})
+                rest_resync(client, args, reason=reason,
+                            market_id=name if name not in ("market", "account") else None)
             if args.max_events and count >= args.max_events:
                 return count
         if not subscribed:
