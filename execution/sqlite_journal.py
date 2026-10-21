@@ -150,6 +150,10 @@ class SQLiteWALJournal:
                     event_ts_ms INTEGER NOT NULL,
                     received_ns INTEGER NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS journal_anchor (
+                    id INTEGER PRIMARY KEY CHECK(id=1),
+                    activation_ms INTEGER NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS journal_safety (
                     id INTEGER PRIMARY KEY CHECK(id=1),
                     kill_switch INTEGER NOT NULL,
@@ -362,6 +366,82 @@ class SQLiteWALJournal:
                 self.dex, self.account_id, orders, count, bool(kill), reason
             )
         return self._submit(read)
+
+    def initialize_flat_anchor(self, activation_ms: int) -> Future[int]:
+        """Persist a zero-inventory starting point exactly once.
+
+        Caller must first establish flat venue positions and zero open orders
+        using two consistent account reads. Never reanchor an existing ledger.
+        """
+        if not isinstance(activation_ms, int) or activation_ms <= 0:
+            raise ValueError("invalid activation timestamp")
+        def write(conn: sqlite3.Connection) -> int:
+            row = conn.execute("SELECT activation_ms FROM journal_anchor WHERE id=1").fetchone()
+            if row:
+                return int(row[0])
+            if conn.execute("SELECT COUNT(*) FROM journal_actions").fetchone()[0]:
+                raise JournalConflict("unanchored journal already contains order actions")
+            if conn.execute("SELECT COUNT(*) FROM journal_fills").fetchone()[0]:
+                raise JournalConflict("unanchored journal already contains fills")
+            conn.execute("INSERT INTO journal_anchor VALUES(1,?)", (activation_ms,))
+            return activation_ms
+        return self._submit(write)
+
+    def load_anchor(self) -> Future[int | None]:
+        def read(conn: sqlite3.Connection) -> int | None:
+            row = conn.execute("SELECT activation_ms FROM journal_anchor WHERE id=1").fetchone()
+            return int(row[0]) if row else None
+        return self._submit(read)
+
+    def load_all_placements(self) -> Future[tuple[StoredPlacement, ...]]:
+        def read(conn: sqlite3.Connection) -> tuple[StoredPlacement, ...]:
+            rows = conn.execute(
+                """SELECT id,client_order_id,instrument,side,price,size,post_only,
+                   reduce_only,dispatch_state,exchange_order_id
+                   FROM journal_actions WHERE kind='PLACE' ORDER BY id"""
+            ).fetchall()
+            return tuple(StoredPlacement(
+                r[0], r[1], r[2], r[3], Decimal(r[4]), Decimal(r[5]),
+                bool(r[6]), bool(r[7]), r[8], r[9],
+            ) for r in rows)
+        return self._submit(read)
+
+    def load_fill_positions(self) -> Future[dict[str, Decimal]]:
+        """Net signed filled quantity since the persisted zero-position anchor."""
+        def read(conn: sqlite3.Connection) -> dict[str, Decimal]:
+            rows = conn.execute(
+                """SELECT f.instrument, a.side, f.size FROM journal_fills AS f
+                JOIN journal_actions AS a ON a.client_order_id=f.client_order_id
+                AND a.kind='PLACE' ORDER BY f.event_ts_ms"""
+            ).fetchall()
+            count = conn.execute("SELECT COUNT(*) FROM journal_fills").fetchone()[0]
+            if len(rows) != count:
+                raise JournalConflict("orphan fill without journaled placement")
+            positions: dict[str, Decimal] = {}
+            for instrument, side, size in rows:
+                if side not in ("BID", "ASK"):
+                    raise JournalConflict("unknown order side in fill ledger")
+                positions[instrument] = positions.get(instrument, Decimal(0)) + (
+                    Decimal(size) if side == "BID" else -Decimal(size)
+                )
+            return positions
+        return self._submit(read)
+
+    def mark_terminal(self, client_order_id: str, reason: str) -> Future[None]:
+        """Venue-confirmed terminal status. Preserves original immutable action."""
+        if not _CLOID.fullmatch(client_order_id) or reason not in ("filled", "canceled", "rejected"):
+            raise ValueError("invalid terminal order evidence")
+        def write(conn: sqlite3.Connection) -> None:
+            updated = conn.execute(
+                """UPDATE journal_actions SET dispatch_state='CLOSED',
+                   outcome_reason=?, updated_ns=?
+                   WHERE kind='PLACE' AND client_order_id=?
+                   AND dispatch_state IN ('PREPARED','SENT','CLOSED')""",
+                (reason, time.time_ns(), client_order_id.lower()),
+            ).rowcount
+            if updated != 1:
+                raise JournalConflict("terminal order was not previously prepared")
+        return self._submit(write)
 
     def checkpoint(self, *, truncate: bool = False) -> Future[tuple[int, int, int]]:
         """Explicit OFF-HOT-PATH WAL checkpoint. Schedule only during idle/maintenance.
