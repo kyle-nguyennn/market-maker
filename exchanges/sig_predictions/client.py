@@ -173,8 +173,8 @@ class SigPredictionsVenueClient:
         )
 
     @staticmethod
-    def _order_fields(req: SigOrderRequest) -> dict[str, Any]:
-        if not req.idempotency_key:
+    def _order_fields(req: SigOrderRequest, *, require_key: bool = False) -> dict[str, Any]:
+        if require_key and not req.idempotency_key:
             raise ValueError("SIG placement requires durable client idempotency key")
         if req.quantity <= 0 or req.quantity > 2147483647:
             raise ValueError("SIG placement quantity out of range")
@@ -187,7 +187,7 @@ class SigPredictionsVenueClient:
     def place_order(self, request: SigOrderRequest) -> SigOrderResult:
         self._require_trading()
         payload = self._call(
-            self.sdk.orders.create, **self._order_fields(request),
+            self.sdk.orders.create, **self._order_fields(request, require_key=True),
             idempotency_key=request.idempotency_key,
         )
         return SigOrderResult(
