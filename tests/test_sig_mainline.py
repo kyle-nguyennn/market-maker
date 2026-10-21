@@ -109,3 +109,24 @@ def test_sig_readonly_cli_rejects_invalid_exchange_and_missing_key(monkeypatch):
     monkeypatch.setenv("SIG_PREDICTIONS_API_KEY", "test-only")
     with pytest.raises(ValueError, match="positive"):
         check_account(client, exchange_id="../42")
+
+
+
+def test_sig_readonly_check_prints_resolved_tournament_uuid(monkeypatch, capsys):
+    from apps.sig_predictions import check_account
+    monkeypatch.setenv("SIG_PREDICTIONS_API_KEY", "test-only")
+    tournament = "12345678-1234-1234-1234-123456789abc"
+
+    def opener(request, *, timeout):
+        assert request.get_method() == "GET"
+        if "/tournaments/midterm-elections" in request.full_url:
+            return FakeResponse({"tournament": {"id": tournament}})
+        if "/markets?" in request.full_url:
+            return FakeResponse({"markets":[]})
+        return FakeResponse({})
+
+    client = SigPredictionsVenueClient(opener=opener)
+    check_account(client, tournament_slug="midterm-elections")
+    captured = capsys.readouterr().out
+    assert tournament in captured
+    assert "SIG_PREDICTIONS_TOURNAMENT_ID" in captured
