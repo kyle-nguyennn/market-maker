@@ -323,3 +323,18 @@ and fill events must use a separate reliable journal. Redis is never on the
 synchronous quote/risk path.
 
 **Status:** proposal only; no Redis/history integration has been implemented.
+
+## SQLite WAL execution persistence (draft PR #10)
+
+The execution persistence component uses a single-writer SQLite WAL journal
+(FULL synchronous commits) with nonblocking submission from market-data and
+strategy code. New placements are durably journaled before the existing
+risk-checked gateway may contact the venue; emergency cancels are dispatched
+without a disk barrier, then audited. A separate placement executor and
+bounded worker queues keep filesystem I/O off the WebSocket callback path.
+
+See [SQLite execution journal](SQLITE_EXECUTION_JOURNAL.md) for the schema,
+crash-recovery contract, examples, and required readiness gates. This is **not**
+a complete auto-trading runner: restart exchange reconciliation, live account
+checks, SDK private-event normalization and API budgets are still outstanding.
+
