@@ -57,16 +57,16 @@ If the account is not funded or the returned unified-margin schema is not recogn
 - Supply all eight explicit risk caps (position, order notional, absolute notional, gross, net, drawdown, min order notional, price collar).
 - Verify the value of `--confirmed-unified-account` against the actual account configuration, not assumption. Confirm an API-agent signer is rotated/approved. Scored trading requires changing the separate `PERPETUAL_ALPHA_PAS_ALLOW_TRADING` guard.
 - Test a very small ALO order, partial fill, cancel acknowledgement, restart with resting orders, restart with inventory, REST/WS disconnect, stale data, malformed account state, and disk-full before unattended trading.
-- Monitor the venue account manually during the initial trial. The process has **no independent dead-man timeout** if its host dies, and exchange resting orders can continue executing.
+- The bot attempts to arm a 90-second venue-side dead-man cancellation, refreshing every 30 seconds. **Official PAS documentation states the venue rejects it until $1,000,000 in trading volume.** Before eligibility, the only supported initial live mode is explicit `--attended`, which accepts that particular response while requiring you to monitor open orders manually. Any other dead-man failure stops trading. The bot cannot promise unattended safety without the venue timer or another independent safeguard.
 - Recheck `maxTradeSzs` semantics and `marginSummary.accountValue` on this scored unified account before using live mode. The runner deliberately refuses missing or malformed fields.
 
 ## Known blockers / intentionally missing
 
-- No independent watchdog or exchange-side dead-man cancellation after an entire host crash.
+- The exchange dead-man feature is gated until $1M of account trading volume. Until eligible, there is **no independent cancellation after a host crash**. Use manual/attended microtrials only.
 - No proven private WS order/fill normalization; REST polling is authoritative for now and may lag.
 - No formal trade-history pagination/coverage proof if the exchange truncates account fills. Even position equality cannot prove that a same-sized round trip was not omitted.
 - No robust cross-asset quoting, hedging, multi-market inventory, funding accounting or PnL reports.
 - No verified end-to-end *live* scored order cycle; no private key or real order has been submitted by this PR.
 - No automatic cross-session/manual reconciliation override. Unresolved state halts instead of trading under assumptions.
 
-**Release criterion:** end-to-end signed order/cancel/fill/restart verified with tiny exposure, correct account/DEX scoping, and independent protection against lost heartbeat. Until then this is a candidate MVP-0 integration, not a guarantee of safety.
+**Release criterion:** end-to-end signed order/cancel/fill/restart verified with tiny exposure and correct account/DEX scoping. A fully unattended release additionally requires eligible venue-side dead-man cancellation or an independent recovery agent. Do not bypass positive equity, available trading capacity or verified account-mode checks. Until then this is a candidate MVP-0 integration, not a guarantee of safety.
