@@ -274,3 +274,23 @@ def test_post_anchor_unmapped_fill_blocks_recovery(tmp_path):
         assert not bot.ready_event.is_set()
     finally:
         journal.close()
+
+
+def test_deadman_requires_eligibility_or_explicit_attended_trial(tmp_path):
+    bot, venue, journal = make_bot(tmp_path)
+    def ineligible(deadline):
+        raise RuntimeError(
+            "venue dead-man rejected: Cannot set scheduled cancel time "
+            "until enough volume traded. Required: $1000000."
+        )
+    venue.schedule_cancel_all = ineligible
+    bot.live = True
+    try:
+        with pytest.raises(RuntimeError, match="enough volume traded"):
+            bot._ensure_deadman()
+        bot.attended = True
+        bot._ensure_deadman()
+        assert bot._deadman_ineligible
+        bot._ensure_deadman()  # doesn't spam the ineligible endpoint
+    finally:
+        journal.close()
