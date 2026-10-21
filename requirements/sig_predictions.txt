@@ -1,0 +1,3 @@
+# SIG Predictions venue dependencies; do not install for core or Hyperliquid.
+-r common.txt
+super-market==0.1.0
