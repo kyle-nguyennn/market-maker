@@ -55,8 +55,11 @@ def _terminal_evidence(payload: object) -> bool:
     if not isinstance(row, dict):
         return False
     status = row.get("status")
-    if isinstance(status, str) and status.lower() in TERMINAL:
-        return True
+    if isinstance(status, str):
+        if status.lower() in TERMINAL:
+            return True
+        if status.lower() in {"open", "resting", "pending"}:
+            return False
     return row.get("open") is False
 
 
@@ -107,11 +110,14 @@ def _verify_closed(client: SigPredictionsVenueClient, order_id: int | str) -> bo
     return False
 
 
-def _cancel_and_verify(client: SigPredictionsVenueClient, path: Path, state: dict) -> None:
+def _cancel_and_verify(
+    client: SigPredictionsVenueClient, path: Path, state: dict, *,
+    check_first: bool = True,
+) -> None:
     oid = state.get("order_id")
     if not isinstance(oid, (int, str)) or isinstance(oid, bool) or not str(oid).isdigit():
         raise SmokeUncertain("order ID unknown; no safe targeted cancel. Inspect account/orders manually")
-    if _verify_closed(client, oid):
+    if check_first and _verify_closed(client, oid):
         state["phase"] = "VERIFIED_TERMINAL"
         _write_state(path, state)
         print(f"Order {oid}: venue confirms terminal (may have filled; inspect fills/positions).")
@@ -216,8 +222,6 @@ def smoke(
             f"Exception type: {type(exc).__name__}"
         )
         raise
-    if result.exchange_id != exchange_id:
-        raise SmokeUncertain("POST result exchange ID mismatch; inspect venue manually")
     record["order_id"] = result.order_id
     record["phase"] = "ACKED" if result.order_id is not None else "NO_ORDER_ID"
     record["filled_qty_at_submit"] = result.quantity_traded
@@ -227,6 +231,8 @@ def smoke(
         f"ACK: order_id={result.order_id}, open={result.open}, "
         f"filled={result.quantity_traded}, remaining={result.remaining_quantity}."
     )
+    if result.exchange_id != exchange_id:
+        raise SmokeUncertain("POST result exchange ID mismatch; journal retains OID for investigation")
     if result.order_id is None:
         if not result.open and Decimal(result.quantity_traded) == 0:
             record["phase"] = "VERIFIED_TERMINAL"
@@ -236,7 +242,7 @@ def smoke(
         raise SmokeUncertain("missing order ID with possible execution; manual position/fill review required")
     # If the order filled instantly it may already be terminal; still verify.
     # If cancel/GET fails, leave the journal for --recover; do not place again.
-    _cancel_and_verify(client, state_path, record)
+    _cancel_and_verify(client, state_path, record, check_first=not result.open)
 
 
 def parse_args() -> argparse.Namespace:
