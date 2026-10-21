@@ -39,8 +39,17 @@ def check_account(
     client.get_account()
     print("Account: authenticated read succeeded")
     if tournament_slug:
-        client.get_tournament(tournament_slug)
-        print(f"Tournament resolved: {tournament_slug}")
+        payload = client.get_tournament(tournament_slug)
+        record = payload.get("tournament", payload) if isinstance(payload, dict) else None
+        tournament_id = (
+            record.get("id", record.get("tournamentId"))
+            if isinstance(record, dict) else None
+        )
+        if isinstance(tournament_id, str) and re.fullmatch(r"[0-9a-fA-F-]{36}", tournament_id):
+            print(f"Tournament resolved: {tournament_slug} UUID={tournament_id}")
+            print("Use this UUID in SIG_PREDICTIONS_TOURNAMENT_ID for the smoke.")
+        else:
+            print(f"Tournament resolved: {tournament_slug} (UUID absent in known response fields)")
     client.get_positions(tournament_slug=tournament_slug)
     print("Portfolio positions: read succeeded")
     markets = client.list_markets(
