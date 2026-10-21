@@ -306,11 +306,14 @@ def args_parser(argv=None):
     a = s.add_parser("stream", help="stream Supabase Realtime feeds to stdout")
     a.add_argument("--tournament-id", default=os.getenv("SIG_PREDICTIONS_TOURNAMENT_ID"))
     mode = a.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--market-id")
-    mode.add_argument("--all-markets", action="store_true")
-    mode.add_argument("--user", action="store_true")
+    mode.add_argument("--market-id", help="market container ID (tournament or public combined feed)")
+    mode.add_argument("--exchange-id", help="public context only: individual exchange topic")
+    mode.add_argument("--all-markets", action="store_true", help="one aggregate topic for all tournament markets")
+    mode.add_argument("--user", action="store_true", help="private account_batch and notification feed")
     a.add_argument("--max-events", type=int, default=0, help="0=unlimited")
     a.add_argument("--seconds", type=int, default=1800)
+    a.add_argument("--tournament-slug", help="scope portfolio resync on --user events")
+    a.add_argument("--resync-seconds", type=int, default=90, help="REST reconciliation cadence; min 30")
     a.add_argument("--reconnects", type=int, default=2)
     return p.parse_args(argv)
 
@@ -323,7 +326,7 @@ def main(argv=None):
         raise ValueError("--pages must be 1–20")
     if args.command == "watch-order" and (args.interval < 2 or args.polls < 1):
         raise ValueError("watch requires --interval >= 2 and --polls >= 1")
-    if args.command == "stream" and (args.seconds < 1 or args.reconnects < 0 or args.max_events < 0):
+    if args.command == "stream" and (args.seconds < 1 or args.reconnects < 0 or args.max_events < 0 or args.resync_seconds < 30):
         raise ValueError("invalid realtime duration/count")
     with SigPredictionsVenueClient(allow_trading=(
         args.command in ("place", "cancel") and args.live
