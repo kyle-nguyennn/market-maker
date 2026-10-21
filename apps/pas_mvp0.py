@@ -37,6 +37,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--live", action="store_true", help="explicitly request authenticated orders")
     parser.add_argument("--confirm-wallet", default=None,
                         help="must exactly equal team wallet for live trading")
+    parser.add_argument("--attended", action="store_true",
+                        help="manual presence required if DMS is unavailable before $1M volume")
     parser.add_argument("--confirmed-unified-account", action="store_true",
                         help="operator has independently verified the PAS account mode")
     parser.add_argument("--max-position", type=Decimal)
@@ -115,6 +117,7 @@ def main() -> None:
             team_wallet=team_wallet, instrument=args.instrument,
             quoter=PassiveQuoter(size=args.quote_size, edge_bps=args.edge_bps),
             live=args.live, verified_unified=args.confirmed_unified_account,
+            attended=args.attended,
             poll_s=args.poll_seconds, quote_s=args.quote_seconds,
         )
         app.run()
