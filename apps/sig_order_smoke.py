@@ -110,6 +110,27 @@ def _verify_closed(client: SigPredictionsVenueClient, order_id: int | str) -> bo
     return False
 
 
+def _report_fills(client: SigPredictionsVenueClient, order_id: int | str) -> None:
+    """Read order-specific fills; never mistake terminal cancellation for no fill."""
+    try:
+        payload = client.get_order_fills(order_id)
+    except Exception as exc:
+        print(f"Fills: lookup unsuccessful ({type(exc).__name__}); manual reconciliation required.")
+        return
+    fills = payload.get("fills") if isinstance(payload, dict) else None
+    if not isinstance(fills, list):
+        print("Fills: unrecognized API response; inspect order fills and portfolio manually.")
+        return
+    cursor = payload.get("nextCursor") if isinstance(payload, dict) else None
+    if cursor:
+        print(f"Fills: at least {len(fills)} record(s), more pages; inspect all fills manually.")
+    else:
+        print(f"Fills: {len(fills)} execution record(s). " +
+              ("A real trade occurred; reconcile portfolio positions." if fills else
+               "No executions shown for this order."))
+    return
+
+
 def _cancel_and_verify(
     client: SigPredictionsVenueClient, path: Path, state: dict, *,
     check_first: bool = True,
@@ -120,7 +141,8 @@ def _cancel_and_verify(
     if check_first and _verify_closed(client, oid):
         state["phase"] = "VERIFIED_TERMINAL"
         _write_state(path, state)
-        print(f"Order {oid}: venue confirms terminal (may have filled; inspect fills/positions).")
+        print(f"Order {oid}: venue confirms terminal.")
+        _report_fills(client, oid)
         return
     # Only cancel the specific smoke order, never use account-wide cancel-all.
     client.cancel_order(oid)
@@ -130,7 +152,8 @@ def _cancel_and_verify(
         raise SmokeUncertain(f"cancel requested for {oid}, terminal status not confirmed; recover manually")
     state["phase"] = "VERIFIED_TERMINAL"
     _write_state(path, state)
-    print(f"Order {oid}: cancellation verified non-resting. Check fills/positions separately.")
+    print(f"Order {oid}: cancellation verified non-resting.")
+    _report_fills(client, oid)
 
 
 def smoke(
