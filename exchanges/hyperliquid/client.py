@@ -256,7 +256,7 @@ class HyperliquidVenueClient:
             raise ValueError("dead-man deadline must be at least five seconds ahead")
         response = self._trader().schedule_cancel(deadline_ms)
         if not isinstance(response, dict) or response.get("status") != "ok":
-            raise RuntimeError("venue did not accept dead-man cancellation schedule")
+            raise RuntimeError(f"venue dead-man rejected: {response!r}")
 
     def update_leverage(self, instrument: str, leverage: int, *,
                         is_cross: bool = True) -> Any:
