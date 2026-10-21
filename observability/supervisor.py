@@ -137,7 +137,10 @@ class SafetySupervisor:
             return RiskDecision(False, "operator_authorization_required")
         verdict = self._health()
         if not verdict.allowed:
-            self.pause(verdict.reason)
+            if self.state is TradingState.ACTIVE:
+                self.pause(verdict.reason)
+            else:
+                self.reason = verdict.reason
             return verdict
         self.state = TradingState.ACTIVE
         self.reason = "ok"
