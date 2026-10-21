@@ -1,0 +1,55 @@
+venue: sig_predictions
+
+api:
+  version: v1
+  production_base_url: https://www.thesuper.market/api/v1
+  api_key_env: SIG_PREDICTIONS_API_KEY
+  api_base_url_env: SIG_PREDICTIONS_API_BASE_URL
+  tournament_id_env: SIG_PREDICTIONS_TOURNAMENT_ID
+  auth: "Authorization: Bearer <key>"
+  scopes: [read, trade]
+  standard_rate_limits_per_minute:
+    reads: 100
+    writes: 30
+
+competition:
+  name: Midterm Elections
+  starts_at: "2026-10-01T12:00:00-04:00"
+  ends_at: "2026-11-04T12:00:00-05:00"
+  starting_balance_susqies: 100000
+
+market:
+  # A Market is a container. Exchange is the atomic tradable contract.
+  canonical_instrument: "SIG_EXCHANGE:<exchange_id>"
+  internal_price_basis: YES
+  fresh_limit_price:
+    min: "0.005"
+    max: "0.995"
+    tick: "0.005"
+  quantity:
+    integer_only: true
+    max: 2147483647
+
+quoting:
+  internal_bid: "buy YES at bid"
+  internal_ask: "buy NO at (1 - ask)"
+  post_only_supported: false
+  recommended_submit_endpoint: POST /orders/multi-leg
+
+realtime:
+  market_channel: "tournament:{tournament_id}:market:{market_id}"
+  all_markets_channel: "tournament:{tournament_id}:markets"
+  token_endpoint: POST /realtime/token
+  token_lifetime_hours: 3
+  max_channels_per_connection: 100
+  batch_seconds: 1
+  periodic_rest_resync_seconds: [60, 120]
+
+execution:
+  idempotency_key_required: true
+  retry_429_with_retry_after: true
+  retry_409_request_in_flight: true
+  retry_502_same_idempotency_key_after_reconciliation: true
+  retry_503_with_exponential_backoff: true
+  cancel_all_retry_until_http_200: true
+  require_server_confirmation_before_local_cancel: true
