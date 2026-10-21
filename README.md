@@ -164,3 +164,29 @@ persists an idempotency key before POST, and stops on uncertain order state.
 
 See [SIG order/cancel smoke runbook](docs/SIG_ORDER_SMOKE.md) for live flags,
 recovery, and the remaining requirements before unattended trading.
+
+### SIG-only environment (published Scalar SDK)
+
+The published [Super Market Python SDK](https://pypi.org/project/super-market/)
+is version-pinned in `requirements/sig_predictions.txt` as `super-market==0.1.0`.
+The Python import is `super_market`. Neither core nor Hyperliquid installs it.
+
+```bash
+conda env create --format environment-yaml -f environment.sig_predictions.yml
+conda activate market-maker
+python -m pip check
+# Existing proven standard-library HTTP check:
+python -m apps.sig_predictions --check
+# SDK-backed GET-only parity check (does not send or cancel orders):
+python -m apps.sig_predictions --check --sdk
+# Optional actual tournament and exchange (replace values from SIG):
+python -m apps.sig_predictions --check --sdk --tournament-slug midterm-elections --exchange-id 36
+```
+
+For an existing core environment, use
+`python -m pip install -r requirements/sig_predictions.txt`.
+The SDK-backed adapter is initially **GET-only**. The attended signed
+`apps.sig_order_smoke` still uses the existing guarded HTTP client, as the
+Scalar SDK's write/error/partial-fill semantics require explicit parity
+tests before swapping live transports. The generated SDK automatically
+retries by default; the SDK-backed client forces `max_retries=0`.
