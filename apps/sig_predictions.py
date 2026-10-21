@@ -17,12 +17,8 @@ from exchanges.sig_predictions.config import SigPredictionsVenueConfig
 from market_handler.sig_predictions_adapter import SigPredictionsMarketAdapter
 
 
-def build_stack(*, sdk: bool = False) -> tuple[SigPredictionsVenueClient, SigPredictionsMarketAdapter]:
-    config = SigPredictionsVenueConfig()
-    if sdk:
-        from exchanges.sig_predictions.sdk_read_client import SigPredictionsSDKReadClient
-        return SigPredictionsSDKReadClient(config), SigPredictionsMarketAdapter()
-    return SigPredictionsVenueClient(config, allow_trading=False), SigPredictionsMarketAdapter()
+def build_stack() -> tuple[SigPredictionsVenueClient, SigPredictionsMarketAdapter]:
+    return SigPredictionsVenueClient(allow_trading=False), SigPredictionsMarketAdapter()
 
 
 def check_account(
@@ -80,12 +76,12 @@ def check_account(
 def main() -> None:
     parser = argparse.ArgumentParser(description="SIG Predictions read-only API diagnostics")
     parser.add_argument("--check", action="store_true", help="run authenticated reads")
-    parser.add_argument("--sdk", action="store_true", help="use published Scalar SDK, read-only")
+    parser.add_argument("--sdk", action="store_true", help="deprecated compatibility alias; SDK is always used")
     parser.add_argument("--exchange-id", default=None, help="optional numeric exchange ID")
     parser.add_argument("--tournament-slug", default=None, help="optional tournament slug")
     args = parser.parse_args()
 
-    client, _ = build_stack(sdk=args.sdk)
+    client, _ = build_stack()
     try:
         if not args.check:
             print(
@@ -93,14 +89,13 @@ def main() -> None:
                 f"api={client.config.api_version}",
                 f"base={client.config.api_base_url()}",
                 "trading=disabled",
-                f"transport={'scalar-sdk' if args.sdk else 'stdlib'}",
+                "transport=scalar-sdk",
                 "realtime_socket=pending",
             )
             return
         check_account(client, tournament_slug=args.tournament_slug, exchange_id=args.exchange_id)
     finally:
-        if args.sdk:
-            client.close()
+        client.close()
 
 
 if __name__ == "__main__":
