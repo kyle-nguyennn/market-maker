@@ -7,6 +7,7 @@ import pytest
 from execution.order_manager import OrderManager, ReconciliationError
 from execution.pas_mvp0_runtime import (
     MVP0PasBot, PassiveQuoter, positions_from_perps, venue_status,
+    scored_unified_equity,
 )
 from execution.safe_gateway import SafeExecutionGateway
 from execution.sqlite_journal import SQLiteWALJournal
@@ -24,6 +25,8 @@ class FakeVenue:
     def __init__(self, position="0"):
         self.config = HyperliquidVenueConfig.from_environment(dex="pas", environ={})
         self.position = position
+        self.usdp = "1000"
+        self.unrealized = "0"
         self.open_orders = []
         self.fills = []
         self.status_calls = 0
@@ -31,8 +34,13 @@ class FakeVenue:
     def query_positions(self, address):
         assert address == WALLET
         return {"assetPositions": [
-            {"position": {"coin": "pas:BTC", "szi": self.position}}
-        ], "marginSummary": {"accountValue": "1000"}}
+            {"position": {"coin": "pas:BTC", "szi": self.position,
+                          "unrealizedPnl": self.unrealized}}
+        ], "marginSummary": {"accountValue": "0"}}
+
+    def query_spot_balance(self, address):
+        assert address == WALLET
+        return {"balances": [{"coin": "USDP", "total": self.usdp, "hold": "0"}]}
 
     def query_open_orders(self, address):
         return list(self.open_orders)
@@ -295,5 +303,46 @@ def test_deadman_requires_eligibility_or_explicit_attended_trial(tmp_path):
         bot._ensure_deadman()
         assert bot._deadman_ineligible
         bot._ensure_deadman()  # doesn't spam the ineligible endpoint
+    finally:
+        journal.close()
+
+
+def test_scored_unified_equity_uses_usdp_spot_plus_unrealized_pnl():
+    perps = {"assetPositions": [
+        {"position": {"coin": "pas:BTC", "szi": "0.01", "unrealizedPnl": "15.25"}},
+        {"position": {"coin": "pas:ETH", "szi": "-0.1", "unrealizedPnl": "-2.05"}},
+    ], "marginSummary": {"accountValue": "0"}}
+    spot = {"balances": [{"coin": "USDP", "total": "100000.00", "hold": "200"}]}
+    assert scored_unified_equity(spot, perps) == D("100013.20")
+    # The perps marginSummary can be zero even while USDP collateral is funded.
+    assert scored_unified_equity(
+        {"balances": [{"coin": "USDP", "total": "1000"}]},
+        {"assetPositions": [], "marginSummary": {"accountValue": "0"}},
+    ) == D("1000")
+
+
+@pytest.mark.parametrize("spot, perps", [
+    ({"balances": []}, {"assetPositions": []}),
+    ({"balances": [{"coin": "USDP", "total": "10"}, {"coin": "USDP", "total": "10"}]},
+     {"assetPositions": []}),
+    ({"balances": [{"coin": "USDP", "total": "NaN"}]}, {"assetPositions": []}),
+    ({"balances": [{"coin": "USDP", "total": "100"}]},
+     {"assetPositions": [{"position": {"coin": "pas:BTC", "szi": "0.1"}}]}),
+    ({"balances": [{"coin": "USDP", "total": "10"}]},
+     {"assetPositions": [{"position": {"unrealizedPnl": "-20"}}]}),
+])
+def test_scored_unified_equity_fails_closed_on_missing_or_insufficient_data(spot, perps):
+    with pytest.raises(ReconciliationError):
+        scored_unified_equity(spot, perps)
+
+
+def test_unified_account_reader_fails_without_scored_funding(tmp_path):
+    bot, venue, journal = make_bot(tmp_path)
+    try:
+        venue.usdp = "0"
+        with pytest.raises(ReconciliationError, match="nonpositive or unavailable"):
+            bot._reconcile()
+        assert not bot.manager.ready
+        assert journal.load_anchor().result() is None
     finally:
         journal.close()
