@@ -135,6 +135,7 @@ class MVP0PasBot:
         self._last_account: VerifiedAccount | None = None
         self._last_account_ms = 0
         self._anchor_ms: int | None = None
+        self._baseline_equity: Decimal | None = None
 
     def _venue_open(self, raw: Any, known: dict[str, Any]) -> tuple[LiveOrder, ...]:
         if not isinstance(raw, list):
@@ -213,8 +214,11 @@ class MVP0PasBot:
             if anchor is None:
                 if all_orders or account.open_orders or any(account.positions.values()):
                     raise ReconciliationError("first boot requires flat account and no prior orders")
-                anchor = self.journal.initialize_flat_anchor(self.clock_ms()).result(timeout=10)
+                anchor = self.journal.initialize_flat_anchor(\n                    self.clock_ms(), account.equity\n                ).result(timeout=10)
             self._anchor_ms = anchor
+            self._baseline_equity = self.journal.load_baseline_equity().result(timeout=10)
+            if self._baseline_equity is None or self._baseline_equity <= 0:
+                raise ReconciliationError("missing persisted account equity baseline")
 
         # Resolve all unresolved journal orders (PREPARED remains potentially sent).
         unresolved = [p for p in all_orders if p.dispatch_state in ("PREPARED", "SENT")]
@@ -222,9 +226,17 @@ class MVP0PasBot:
         confirmed_closed: set[str] = set()
         oid_to_cloid: dict[int, str] = {o.exchange_order_id: o.client_order_id for o in account.open_orders}
         for p in all_orders:
+            if p.dispatch_state == "NOT_SENT":
+                continue
+            if p.dispatch_state == "CLOSED" and p.exchange_order_id is not None:
+                oid_to_cloid[p.exchange_order_id] = p.client_order_id
+                if p.client_order_id in observed:
+                    raise ReconciliationError("previously closed order is again resting")
+                continue
             status, oid = venue_status(self.client.query_order_status(
                 self.wallet, client_order_id=p.client_order_id
             ))
+            self.journal.remember_order_oid(p.client_order_id, oid).result(timeout=10)
             if oid in oid_to_cloid and oid_to_cloid[oid] != p.client_order_id:
                 raise ReconciliationError("OID maps to more than one CLOID")
             oid_to_cloid[oid] = p.client_order_id
@@ -263,6 +275,17 @@ class MVP0PasBot:
                 fee=dec(f["fee"]), event_ts_ms=ts,
             ).result(timeout=10)
         expected = self.journal.load_fill_positions().result(timeout=10)
+        # Prior OMS state can remain active even after its journal row is CLOSED.
+        for cloid, old in self.manager.live_orders.items():
+            if old.active and cloid not in observed:
+                if cloid not in known or known[cloid].dispatch_state == "NOT_SENT":
+                    raise ReconciliationError("unexpected active local order")
+                if cloid not in confirmed_closed:
+                    status, _ = venue_status(self.client.query_order_status(\n                        self.wallet, client_order_id=cloid\n                    ))
+                    if status not in TERMINAL_VENUE_STATUSES:
+                        raise ReconciliationError("disappeared order not confirmed terminal")
+                    confirmed_closed.add(cloid)
+                    self.journal.mark_terminal(cloid, status).result(timeout=10)
         if expected.get(self.instrument, Decimal(0)) != account.positions[self.instrument]:
             raise ReconciliationError("venue position != journaled post-anchor fills")
         if not self.manager.resynchronize(
@@ -292,7 +315,7 @@ class MVP0PasBot:
             expected_dex=self.manager.dex, allowed_instruments=frozenset({self.instrument}),
             positions=account.positions, marks={self.instrument: account.mark},
             fillable_orders=(), account_equity=account.equity,
-            baseline_equity=account.equity,  # Must be replaced by persisted session equity for DD enforcement.
+            baseline_equity=self._baseline_equity,
             margin_mode="unified" if self.verified_unified else None,
             capacity_buy={self.instrument: account.capacity_buy},
             capacity_sell={self.instrument: account.capacity_sell},
@@ -345,6 +368,14 @@ class MVP0PasBot:
             self.ready_event.clear()
             self.stop_event.set()
 
+    def _cancel_known(self) -> None:
+        """Best-effort risk-reducing cancellation, never proof of closure."""
+        for action in self.manager.request_cancel_all():
+            try:
+                self._dispatch(action)
+            except Exception:
+                LOG.exception("emergency cancel uncertain; manual venue check required")
+
     def run(self) -> None:
         """Call from the OMS owner/main thread; errors pause rather than restart blind."""
         worker = threading.Thread(target=self._quoter_loop, name="pas-quoter", daemon=True)
@@ -354,6 +385,11 @@ class MVP0PasBot:
             while not self.stop_event.is_set():
                 try:
                     self._reconcile()
+                    if self.live and not self.market.ready:
+                        self.ready_event.clear()
+                        self._cancel_known()
+                        self.manager.start_recovery("market_data_stale")
+                        raise ReconciliationError("market data unavailable; stale quotes cancelled")
                     if self.live:
                         try:
                             intents = self.quotes.get(timeout=self.quote_s)
@@ -371,9 +407,13 @@ class MVP0PasBot:
                     self.ready_event.clear()
                     self.manager.start_recovery("runtime_failure")
                     LOG.exception("MVP-0 fail closed; new orders disabled")
+                    if self.live:
+                        self._cancel_known()
                     # Halt rather than endlessly attempting trades on uncertain state.
                     break
         finally:
+            if self.live:
+                self._cancel_known()
             self.ready_event.clear()
             self.stop_event.set()
             worker.join(timeout=3)
