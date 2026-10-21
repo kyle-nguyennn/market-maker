@@ -122,7 +122,8 @@ python -m apps.perpetual_alpha --check --dex pas --instrument BTC
 
 ## SIG Predictions Cup — read-only first
 
-The SIG v1 API wrapper and YES-normalized adapter are ported to mainline.
+The SIG v1 client uses the published Scalar Python SDK exclusively; the
+YES-normalized market adapter remains in our venue layer.
 Use a participant API key from the SIG account profile. Do not commit keys.
 
 ```bash
@@ -175,18 +176,18 @@ The Python import is `super_market`. Neither core nor Hyperliquid installs it.
 conda env create --format environment-yaml -f environment.sig_predictions.yml
 conda activate market-maker
 python -m pip check
-# Existing proven standard-library HTTP check:
+# SDK-backed read-only check; no requests can place/cancel orders:
 python -m apps.sig_predictions --check
-# SDK-backed GET-only parity check (does not send or cancel orders):
-python -m apps.sig_predictions --check --sdk
-# Optional actual tournament and exchange (replace values from SIG):
-python -m apps.sig_predictions --check --sdk --tournament-slug midterm-elections --exchange-id 36
+# Optional tournament and exchange (replace values from SIG):
+python -m apps.sig_predictions --check --tournament-slug midterm-elections --exchange-id 36
 ```
 
 For an existing core environment, use
 `python -m pip install -r requirements/sig_predictions.txt`.
-The SDK-backed adapter is initially **GET-only**. The attended signed
-`apps.sig_order_smoke` still uses the existing guarded HTTP client, as the
-Scalar SDK's write/error/partial-fill semantics require explicit parity
-tests before swapping live transports. The generated SDK automatically
-retries by default; the SDK-backed client forces `max_retries=0`.
+All SIG API operations now use `SuperMarketAPI` through the single
+`SigPredictionsVenueClient` facade, including attended submit/cancel.
+The previous handwritten urllib HTTP transport and redundant SDK-read
+client have been removed. The generated SDK defaults to automatic retries,
+but the facade enforces `max_retries=0`; write authorization remains
+opt-in and the order smoke's fsynced idempotency journal remains unchanged.
+The existing `--sdk` CLI flag is accepted as a deprecated no-op alias.
