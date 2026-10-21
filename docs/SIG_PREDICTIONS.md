@@ -249,3 +249,36 @@ authentication, or a trading balance. For an exception or eligibility
 interpretation, contact predictionscup@sig.com before placing scored orders.
 
 Source: https://predictionscup.com/rules/
+
+## Published Scalar Python SDK integration (2026-10-21)
+
+The generated Super Market SDK was released as **`super-market==0.1.0`**.
+Install it only through `requirements/sig_predictions.txt` or
+`environment.sig_predictions.yml` (NOT the shared or Hyperliquid requirements).
+Import path: `from super_market import SuperMarketAPI`.
+
+The SIG adapter and order lifecycle are still our application code.
+`SigPredictionsSDKReadClient` wraps generated SDK models for a GET-only
+subset of the existing venue facade, normalizing markets `data` into
+`markets` and decoding versioned exchange books through the existing
+`SigPredictionsVenueClient.get_order_book` implementation.
+
+To compare authenticated REST reads without any trading:
+
+```bash
+python -m pip install -r requirements/sig_predictions.txt
+python -m apps.sig_predictions --check --sdk
+python -m apps.sig_predictions --check --sdk --tournament-slug midterm-elections
+```
+
+The Scalar SDK is constructed with **`max_retries=0`** and our existing
+`SIG_PREDICTIONS_API_KEY`, never relying on the SDK's `BEARER_AUTH` default.
+`--sdk` refuses signed requests regardless of credentials. No API keys are
+placed in CI or source control.
+
+**Remaining migration:** Adapt and parity-test all order endpoints, SDK
+typed errors and error-code payloads, pagination, HTTP 409/429/502/503
+uncertainty handling, partial fills and cancel races before changing
+`apps.sig_order_smoke` or unattended trading. Do not enable SDK implicit
+retries on POST/DELETE. The existing supervised submit/cancel smoke uses
+its earlier tested standard-library transport for now.
