@@ -337,3 +337,61 @@ def test_client_is_readonly_by_default_even_when_api_key_is_present(monkeypatch)
 def test_idempotency_expiry_is_not_retryable():
     error = SigApiError(status=409, code="IDEMPOTENCY_KEY_EXPIRED", message="expired")
     assert not error.retryable
+
+
+@pytest.mark.parametrize(("status", "code"), [
+    (409, "REQUEST_IN_FLIGHT"),
+    (429, "RATE_LIMITED"),
+    (502, "ORDER_STATUS_UNKNOWN"),
+    (503, "SERVICE_UNAVAILABLE"),
+])
+def test_sdk_never_retries_ambiguous_post_and_preserves_error(status, code):
+    sdk_module = pytest.importorskip("super_market")
+    import httpx
+    requests = []
+
+    def handler(req):
+        requests.append(req)
+        return httpx.Response(status, json={"error": {"code": code, "message": "unknown state"}})
+
+    http_client = httpx.Client(transport=httpx.MockTransport(handler))
+    sdk = sdk_module.SuperMarketAPI(
+        bearer_auth="test-key", http_client=http_client,
+        max_retries=0, base_url="https://www.thesuper.market/api/v1",
+    )
+    try:
+        client = SigPredictionsVenueClient(sdk=sdk, allow_trading=True)
+        request = SigOrderRequest(
+            exchange_id="36", outcome=OutcomeSide.YES, action=OrderAction.BUY,
+            quantity=1, price=0.005, idempotency_key="persisted-once",
+            tournament_id="12345678-1234-1234-1234-123456789abc",
+        )
+        with pytest.raises(SigApiError) as error:
+            client.place_order(request)
+        assert error.value.status == status
+        assert error.value.code == code
+        assert len(requests) == 1, "SDK must never transparently resubmit a logical order"
+        assert json.loads(requests[0].content)["idempotencyKey"] == "persisted-once"
+    finally:
+        sdk.close()
+        http_client.close()
+
+
+def test_generated_sdk_injected_retry_configuration_is_rejected():
+    class ClientWithImplicitRetries:
+        max_retries = 2
+    with pytest.raises(ValueError, match="max_retries=0"):
+        SigPredictionsVenueClient(sdk=ClientWithImplicitRetries())
+
+
+def test_sdk_cancel_all_must_be_scoped():
+    class Dummy:
+        max_retries = 0
+        class Orders:
+            def create_cancel_all(self, **kwargs):
+                return {"cancelled": 0}
+        orders = Orders()
+    client = SigPredictionsVenueClient(sdk=Dummy(), allow_trading=True)
+    with pytest.raises(ValueError, match="unscoped"):
+        client.cancel_all_orders()
+    assert client.cancel_all_orders(exchange_id="36") == {"cancelled": 0}
