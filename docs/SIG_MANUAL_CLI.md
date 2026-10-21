@@ -7,10 +7,17 @@ WebSocket protocol to stream channel events. It prints one JSON object per
 line to stdout (suitable for `jq`), never logs API keys or JWTs, and never
 submits a signed order without explicit live confirmations.
 
-Scalar dashboard Quickstart is not currently anonymously retrievable from
-the development environment; this runbook is grounded in the versioned
-generated SDK's typed method signatures plus the official SIG API guide
-and Supabase Realtime protocol, not a verbatim transcription of that panel.
+This runbook is based on the supplied **Super Market API OpenAPI 3.1.0**
+specification (`info.version: 1.0.0`), including its `Quickstart` and
+`Realtime (WebSocket) feeds` sections, cross-checked with the published
+`super-market==0.1.0` generated Python SDK.
+
+The specification distinguishes a **Market** container, an **Exchange**
+tradable contract, and a **tournament-scoped pricing context**.
+On an organization-bound key, `GET /markets` may return the same market
+in several contexts: `contexts[].tournament.id` and
+`contexts[].tournament.slug` must be read together. An unbound key may
+instead show `contexts[].tournament: null` for the public market.
 
 ## Install and authenticate
 
@@ -51,10 +58,15 @@ contract. A market can have multiple exchanges; don't substitute the market
 ID in an order. Realtime channels are keyed by **market ID**.
 
 ```bash
+# Start unscoped to inspect ALL accessible tournament contexts:
+python -m apps.sig_cli markets --status open --pages 3
+# Then request the specific tournament's prices and book context:
 python -m apps.sig_cli markets --tournament-id "$SIG_PREDICTIONS_TOURNAMENT_ID" --status open --pages 3
 python -m apps.sig_cli markets --tournament-id "$SIG_PREDICTIONS_TOURNAMENT_ID" --search election
 python -m apps.sig_cli exchanges --tournament-id "$SIG_PREDICTIONS_TOURNAMENT_ID"
 python -m apps.sig_cli market '<market ID>' --tournament-id "$SIG_PREDICTIONS_TOURNAMENT_ID"
+python -m apps.sig_cli tournament "$SIG_TOURNAMENT_SLUG"
+python -m apps.sig_cli price '<exchange ID>' --tournament-id "$SIG_PREDICTIONS_TOURNAMENT_ID"
 python -m apps.sig_cli book '<exchange ID>' --tournament-id "$SIG_PREDICTIONS_TOURNAMENT_ID"
 ```
 
@@ -138,12 +150,14 @@ does **not** guarantee zero earlier executions.
 ## Step 6 — Realtime WebSocket market feed to stdout
 
 The Scalar SDK only supplies Realtime **credentials**; the actual WS stream
-speaks Supabase Phoenix protocol v2. The CLI mints a short-lived token
-using SDK `realtime.create_token`, connects to the supplied project,
-subscribes to a private channel and waits for `phx_reply` success.
+speaks Supabase Phoenix protocol v2. The CLI mints a short-lived token using SDK `realtime.create_token`,
+connects to the exact `supabaseUrl` returned by SIG, joins a private
+channel with the minted JWT, and waits for `phx_reply` success.
 Callbacks print safe/redacted JSONL. A 20-second Phoenix heartbeat keeps
-the connection alive; connection interruptions are reported with a
-warning that full REST resynchronization is needed.
+the connection alive. The CLI also uses SDK REST reads on initial subscription,
+periodically, and after detected topic revision gaps, `resyncRequired`
+and null trade sequences. Reconnects re-mint the JWT, rejoin and resynchronize.
+This is a diagnostic view, **not** an autonomous market-data recovery engine.
 
 ```bash
 # One market's updates — uses MARKET ID, not EXCHANGE ID:
@@ -156,8 +170,16 @@ python -m apps.sig_cli stream \
   --tournament-id "$SIG_PREDICTIONS_TOURNAMENT_ID" \
   --all-markets --seconds 300
 
-# Private authenticated user channel:
-python -m apps.sig_cli stream --user --seconds 300
+# Private authenticated user channel; explicit tournament portfolio scope:
+python -m apps.sig_cli stream --user \
+  --tournament-id "$SIG_PREDICTIONS_TOURNAMENT_ID" \
+  --tournament-slug "$SIG_TOURNAMENT_SLUG" --seconds 300
+
+# Public combined market feed (unbound/public context):
+python -m apps.sig_cli stream --market-id '<market ID>' --seconds 300
+
+# Public single-exchange feed:
+python -m apps.sig_cli stream --exchange-id '<exchange ID>' --seconds 300
 
 # Capture JSONL stream without exposing credentials:
 python -m apps.sig_cli stream \
@@ -166,13 +188,19 @@ python -m apps.sig_cli stream \
 ```
 
 Optional `--max-events N` exits after N received events;
-`--reconnects N` caps failed reconnects. Press Ctrl-C to stop.
+`--reconnects N` caps failed reconnects.
+`--resync-seconds 90` controls periodic REST snapshots (minimum 30).
+Press Ctrl-C to stop.
 Realtime is **best-effort**; missed messages, revisions and asynchronous
 book updates must be resynchronized from REST before using them for
 trading. This CLI is only a diagnostic listener, not a synchronized
 market-data feed suitable for unattended quoting.
 
 ## Source references
+
+- Supplied `api-1(1).json`: OpenAPI 3.1.0, Super Market API v1.0.0,
+  `info.description → Quickstart` and `Realtime (WebSocket) feeds`.
+  (This file was provided in the ChatGPT conversation; it is not an API key.)
 
 - SIG's [API Overview](https://sig.thesuper.market/docs) and
   [API Changelog](https://sig.thesuper.market/docs/changelog).
