@@ -1,12 +1,16 @@
 # Hyperliquid adapter notes
 
 - Use Hyperliquid **testnet** only for Perpetual Alpha.
-- The competition DEX is `par`; venue market names are `par:BTC`, `par:ETH`, etc.
+- Perpetual Alpha practice uses DEX `par` (USDPR); the scored competition DEX is `pas` (USDP). Select exactly one through `PERPETUAL_ALPHA_DEX=par|pas`.
+- Venue names are `par:BTC` or `pas:BTC`; internal symbols remain `BTC` and `ETH`.
 - Internal symbols are unqualified (`BTC`, `ETH`, ...).
 - Internal numeric values are always `Decimal`.
 - This adapter owns all Hyperliquid conversion: symbol prefix, side mapping,
   size quantization, price precision, and decimal-string serialization.
-- Market-wide and position queries must explicitly select `dex=par`.
+- Market-wide and position queries must explicitly select the configured DEX, including per-DEX market metadata and account state.
+- `PERPETUAL_ALPHA_PAS_ALLOW_TRADING=false` is the default signed-order guard; no execution path may bypass it.
+- Treat an accepted cancellation as pending until reconciliation confirms terminal status; never infer no fills from a cancel ACK.
+- Always validate capacity, mark/reference freshness, aggregate fillable exposure and account identity immediately before sending a new order.
 - Use the team-wallet address for account queries.
 - Signed bot actions use a separately approved API wallet.
 - Never commit or log private keys, seed phrases, or API-wallet secrets.

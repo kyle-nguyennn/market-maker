@@ -10,7 +10,7 @@ venue:
       api_url: https://api.hyperliquid-testnet.xyz
       ws_url: wss://api.hyperliquid-testnet.xyz/ws
       collateral: USDPR
-    pa:
+    pas:
       network: testnet
       api_url: https://api.hyperliquid-testnet.xyz
       ws_url: wss://api.hyperliquid-testnet.xyz/ws
@@ -19,9 +19,9 @@ venue:
 account:
   team_wallet_env: PERPETUAL_ALPHA_TEAM_WALLET
   api_private_key_env: PERPETUAL_ALPHA_API_PRIVATE_KEY
-  pa_live_trading_gate_env: PERPETUAL_ALPHA_PA_ALLOW_TRADING
+  pa_live_trading_gate_env: PERPETUAL_ALPHA_PAS_ALLOW_TRADING
 
-# Logical symbols. The configured adapter adds par: or pa: on outbound calls.
+# Logical symbols. The configured adapter adds par: or pas: on outbound calls.
 markets:
   - BTC
   - ETH

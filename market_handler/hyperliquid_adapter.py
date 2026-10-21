@@ -5,7 +5,9 @@ from typing import Iterable
 
 from exchanges.hyperliquid.config import HyperliquidVenueConfig
 from exchanges.hyperliquid.types import (
+    HyperliquidL2Snapshot,
     HyperliquidMarketSpec,
+    parse_l2_snapshot,
     OrderSide,
     TimeInForce,
     VenueOrderRequest,
@@ -46,7 +48,11 @@ class HyperliquidMarketAdapter(BaseMarketAdapter):
 
     @staticmethod
     def _levels(rows: Iterable[tuple[str, str]]) -> tuple[BookLevel, ...]:
-        return tuple(BookLevel(Decimal(px), Decimal(sz)) for px, sz in rows)
+        levels = tuple(BookLevel(Decimal(px), Decimal(sz)) for px, sz in rows)
+        if any(not level.price.is_finite() or not level.size.is_finite()
+               or level.price <= 0 or level.size <= 0 for level in levels):
+            raise ValueError("L2 prices and sizes must be finite and positive")
+        return levels
 
     def snapshot(
         self,
@@ -69,6 +75,9 @@ class HyperliquidMarketAdapter(BaseMarketAdapter):
             invalid_reason = "missing_book_side"
         elif bid_levels[0].price >= ask_levels[0].price:
             invalid_reason = "crossed_book"
+        elif any(left.price <= right.price for left, right in zip(bid_levels, bid_levels[1:])) or \
+             any(left.price >= right.price for left, right in zip(ask_levels, ask_levels[1:])):
+            invalid_reason = "unsorted_book"
 
         return MarketState(
             instrument=self.to_internal_instrument(instrument),
@@ -92,15 +101,15 @@ class HyperliquidMarketAdapter(BaseMarketAdapter):
                 return HyperliquidMarketSpec(sz_decimals=int(row["szDecimals"]))
         raise ValueError(f"market not found in par metadata: {symbol}")
 
-    def from_sdk_l2_snapshot(self, book: dict, *, asset_ctx: dict | None = None) -> MarketState:
+    def from_sdk_l2_snapshot(self, book: HyperliquidL2Snapshot, *,
+                             asset_ctx: dict | None = None) -> MarketState:
         """Convert SDK L2 + optional mark/oracle context to the internal model.
 
         The SDK's wire fields are decimal strings. Conversion to Decimal belongs
         exclusively to this adapter; the client never invents prices or ticks.
         """
+        book = parse_l2_snapshot(book)
         levels = book["levels"]
-        if len(levels) != 2:
-            raise ValueError("Hyperliquid L2 snapshot must contain bid and ask levels")
         context = asset_ctx or {}
         return self.snapshot(
             instrument=book["coin"],

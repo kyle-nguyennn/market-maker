@@ -10,7 +10,8 @@ from hyperliquid.info import Info
 from hyperliquid.utils.types import Cloid
 
 from .config import HyperliquidVenueConfig
-from .types import OrderSide, VenueOrderRequest, VenueOrderResult
+from .types import (HyperliquidL2Snapshot, OrderSide, VenueOrderRequest,
+                    VenueOrderResult, parse_l2_snapshot)
 
 
 _ADDRESS = re.compile(r"0x[0-9a-fA-F]{40}\Z")
@@ -105,14 +106,30 @@ class HyperliquidVenueClient:
     def query_all_mids(self) -> Any:
         return self._read().all_mids(dex=self.config.dex)
 
-    def query_l2_book(self, instrument: str) -> Any:
-        return self._read().l2_snapshot(self._symbol(instrument))
+    def query_l2_book(self, instrument: str) -> HyperliquidL2Snapshot:
+        """Return a structurally validated, typed full-depth L2 snapshot."""
+        book = parse_l2_snapshot(self._read().l2_snapshot(self._symbol(instrument)))
+        if book["coin"] != self._symbol(instrument):
+            raise ValueError("Hyperliquid L2 response belongs to a different instrument/DEX")
+        return book
 
     def query_spot_balance(self, team_wallet: str) -> Any:
         return self._read().spot_user_state(_team_address(team_wallet))
 
     def query_positions(self, team_wallet: str) -> Any:
         return self._read().user_state(_team_address(team_wallet), dex=self.config.dex)
+
+    def query_active_asset_data(self, team_wallet: str, instrument: str) -> Any:
+        """Read user+coin availableToTrade/maxTradeSzs without signing.
+
+        Response is raw SDK JSON. Do not treat availableToTrade notional as
+        base-asset quantity; margin-mode normalization is a separate step.
+        """
+        return self._read().post(
+            "/info",
+            {"type": "activeAssetData", "user": _team_address(team_wallet),
+             "coin": self._symbol(instrument)},
+        )
 
     def query_open_orders(self, team_wallet: str) -> Any:
         return self._read().open_orders(_team_address(team_wallet), dex=self.config.dex)
@@ -138,7 +155,7 @@ class HyperliquidVenueClient:
     def query_account_state(self, team_wallet: str) -> dict[str, Any]:
         wallet = _team_address(team_wallet)
         return {
-            "spot": self.query_spot_balance(wallet),  # USDPR on par, USDP on pa
+            "spot": self.query_spot_balance(wallet),  # USDPR on par, USDP on pas
             "perps": self.query_positions(wallet),
             "open_orders": self.query_open_orders(wallet),
         }
@@ -152,12 +169,12 @@ class HyperliquidVenueClient:
 
     def connect_exchange(self, *, team_wallet: str, api_private_key: str) -> None:
         """Configure the already-approved agent signer; does NOT approve a key."""
-        # Selecting pa or supplying a secret never silently enables live trading.
-        if self.config.dex == "pa" and not self.config.allow_live_trading:
+        # Selecting pas or supplying a secret never silently enables live trading.
+        if self.config.dex == "pas" and not self.config.allow_live_trading:
             raise PermissionError(
-                "pa trading is disabled. Verify network, live account funding, "
+                "pas trading is disabled. Verify network, live account funding, "
                 "API authorization and risk limits, then explicitly set "
-                "PERPETUAL_ALPHA_PA_ALLOW_TRADING=true."
+                "PERPETUAL_ALPHA_PAS_ALLOW_TRADING=true."
             )
         wallet = _team_address(team_wallet)
         if not api_private_key:
@@ -250,6 +267,17 @@ class HyperliquidVenueClient:
         self.connect_stream()
         return self._ws_info.subscribe(
             {"type": channel, "coin": self._symbol(instrument)}, callback
+        )
+
+    def unsubscribe_public(self, channel: str, instrument: str,
+                           subscription_id: int) -> bool:
+        """Remove exactly one public WS subscription without closing other feeds."""
+        if channel not in _PUBLIC_CHANNELS:
+            raise ValueError(f"unsupported public channel: {channel}")
+        if self._ws_info is None:
+            return False
+        return self._ws_info.unsubscribe(
+            {"type": channel, "coin": self._symbol(instrument)}, subscription_id
         )
 
     def subscribe_private(self, channel: str, team_wallet: str,

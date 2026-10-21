@@ -16,7 +16,7 @@ from exchanges.hyperliquid.types import OrderSide, TimeInForce, VenueOrderReques
 
 @pytest.fixture(autouse=True)
 def _default_practice_profile(monkeypatch):
-    # These are par contract tests even if the developer's .env selects pa.
+    # These are par contract tests even if the developer's .env selects pas.
     monkeypatch.setenv("PERPETUAL_ALPHA_DEX", "par")
 
 
@@ -90,6 +90,10 @@ def sdk(monkeypatch):
         def subscribe(self, subscription, callback):
             self.subscriptions.append((subscription, callback))
             return len(self.subscriptions)
+
+        def unsubscribe(self, subscription, subscription_id):
+            self.calls.append(("unsubscribe", subscription, subscription_id))
+            return True
 
         def disconnect_websocket(self):
             self.calls.append(("close",))
@@ -285,11 +289,13 @@ def test_realtime_subscriptions_use_prefixed_coin_and_parent_address(sdk):
     client = HyperliquidVenueClient()
     events = []
     assert client.subscribe_public("l2Book", "BTC", events.append) == 1
+    assert client.unsubscribe_public("l2Book", "BTC", 1)
     assert client.subscribe_private("orderUpdates", TEAM, events.append) == 2
     info = FakeInfo.instances[0]
     assert info.skip_ws is False
     assert info.subscriptions[0][0] == {"type": "l2Book", "coin": "par:BTC"}
     assert info.subscriptions[1][0] == {"type": "orderUpdates", "user": TEAM}
+    assert ("unsubscribe", {"type": "l2Book", "coin": "par:BTC"}, 1) in info.calls
     client.close_stream()
     assert ("close",) in info.calls
 
@@ -309,3 +315,49 @@ def test_leverage_is_explicit_and_uses_prefixed_market(sdk):
         client.update_leverage("BTC", 0)
     client.update_leverage("BTC", 2)
     assert ("leverage", 2, "par:BTC", True) in sdk[1].instances[-1].calls
+
+
+def test_active_asset_data_queries_exact_team_account_and_dex_symbol(sdk):
+    client = HyperliquidVenueClient()
+    requests = []
+    client._info = SimpleNamespace(post=lambda path, payload: (
+        requests.append((path, payload))
+        or {"user": TEAM, "coin": payload["coin"],
+            "maxTradeSzs": ["1.0", "2.0"],
+            "availableToTrade": ["1000", "2000"], "markPx": "100"}
+    ))
+    answer = client.query_active_asset_data(TEAM, "BTC")
+    assert requests == [("/info", {
+        "type": "activeAssetData", "user": TEAM, "coin": "par:BTC",
+    })]
+    assert answer["coin"] == "par:BTC"
+    with pytest.raises(ValueError):
+        client.query_active_asset_data("invalid", "BTC")
+    with pytest.raises(ValueError):
+        client.query_active_asset_data(TEAM, "pas:BTC")
+
+
+def test_query_l2_book_fails_closed_for_malformed_or_wrong_dex(sdk):
+    client = HyperliquidVenueClient()
+    info = sdk[0].instances[0] if sdk[0].instances else None
+    client.connect_info()
+    info = sdk[0].instances[-1]
+
+    info.l2_snapshot = lambda coin: {
+        "coin": "pas:BTC", "time": 1, "levels": [[], []]
+    }
+    with pytest.raises(ValueError, match="different instrument/DEX"):
+        client.query_l2_book("BTC")
+
+    info.l2_snapshot = lambda coin: {
+        "coin": coin, "time": 1, "levels": [["bad"], []]
+    }
+    with pytest.raises(ValueError, match="level"):
+        client.query_l2_book("BTC")
+
+
+def test_unsubscribe_public_requires_valid_channel(sdk):
+    client = HyperliquidVenueClient()
+    assert client.unsubscribe_public("l2Book", "BTC", 7) is False
+    with pytest.raises(ValueError, match="unsupported"):
+        client.unsubscribe_public("fake", "BTC", 7)

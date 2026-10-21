@@ -27,11 +27,7 @@ class Quote:
 
 @dataclass(frozen=True)
 class OrderIntent:
-    """Venue-independent execution intent.
-
-    Numeric fields remain Decimal until a market adapter converts them to the
-    target venue's exact wire/SDK representation.
-    """
+    """Venue-independent intent. Adapter owns all precision and serialization."""
 
     instrument: str
     side: Side
@@ -51,3 +47,51 @@ class ExecutionReport:
     filled_size: Decimal | None = None
     average_price: Decimal | None = None
     error: str | None = None
+
+
+class OrderEventType(str, Enum):
+    """Normalized venue event, NOT an unverified SDK message shape.
+
+    A successful cancel request is CANCEL_ACCEPTED, not CANCELLED.
+    A fill event supplies total CUMULATIVE filled size, not the last trade size.
+    UNKNOWN covers ambiguous send/cancel timeouts and requires recovery.
+    """
+
+    RESTING = "RESTING"
+    PARTIAL_FILL = "PARTIAL_FILL"
+    FILLED = "FILLED"
+    CANCEL_ACCEPTED = "CANCEL_ACCEPTED"
+    CANCELLED = "CANCELLED"
+    REJECTED = "REJECTED"
+    UNKNOWN = "UNKNOWN"
+
+
+@dataclass(frozen=True)
+class OrderEvent:
+    client_order_id: str
+    kind: OrderEventType
+    exchange_order_id: int | None = None
+    cumulative_filled_size: Decimal | None = None
+    instrument: str | None = None
+    dex: str | None = None
+    account_id: str | None = None
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
+class PlaceAction:
+    """Proposed new order. Never executes an SDK request itself."""
+
+    intent: OrderIntent
+
+
+@dataclass(frozen=True)
+class CancelAction:
+    """Request cancellation; an accepted request is not terminal proof."""
+
+    instrument: str
+    client_order_id: str
+    exchange_order_id: int | None = None
+
+
+OrderAction = PlaceAction | CancelAction

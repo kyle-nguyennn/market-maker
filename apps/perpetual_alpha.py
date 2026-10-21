@@ -2,7 +2,7 @@
 
 python -m apps.perpetual_alpha --check                   # profile in .env
 python -m apps.perpetual_alpha --check --dex par       # practice testnet
-python -m apps.perpetual_alpha --check --dex pa        # scored testnet
+python -m apps.perpetual_alpha --check --dex pas        # scored testnet
 Never signs orders or reads an API private key.
 """
 from __future__ import annotations
@@ -77,7 +77,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Perpetual Alpha read-only venue diagnostics")
     parser.add_argument("--check", action="store_true", help="query the selected network")
     parser.add_argument(
-        "--dex", choices=("par", "pa"), default=None,
+        "--dex", choices=("par", "pas"), default=None,
         help="override PERPETUAL_ALPHA_DEX from .env without changing it",
     )
     parser.add_argument("--instrument", default="BTC", help="unqualified market e.g. BTC")
