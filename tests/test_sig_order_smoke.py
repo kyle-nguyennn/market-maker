@@ -35,6 +35,7 @@ class FakeClient:
         self.post_error = None
         self.cancel_error = None
         self.get_order_payload = None
+        self.order_fills = []
 
     def get_account(self):
         return {"id": "test-identity"}
@@ -84,6 +85,10 @@ class FakeClient:
             return self.get_order_payload
         return {"order": {"status": "open" if self.order_open else "canceled"}}
 
+    def get_order_fills(self, oid):
+        assert str(oid) == "42"
+        return {"fills": list(self.order_fills), "nextCursor": None}
+
     def cancel_order(self, oid):
         assert self.allow_trading
         assert str(oid) == "42"
@@ -118,6 +123,19 @@ def test_real_smoke_places_once_with_durable_key_then_targeted_cancel(tmp_path):
     assert len(client.posts) == 1
     assert client.cancels == [42]
     assert len(client.status_reads) >= 1
+
+
+def test_execution_is_reported_even_after_terminal_cancel(tmp_path, capsys):
+    path = tmp_path / "smoke.json"
+    client = FakeClient(live=True, path=path)
+    client.order_fills = [{"id": 123, "quantity": 1, "price": "0.005"}]
+    smoke(client, exchange_id="36", tournament_id=TOURNAMENT,
+          state_path=path, live=True)
+    output = capsys.readouterr().out
+    assert "A real trade occurred" in output
+    assert "1 execution record" in output
+    assert len(client.posts) == 1
+    assert len(client.cancels) == 1
 
 
 def test_second_run_is_blocked_even_after_success(tmp_path):
