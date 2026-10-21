@@ -228,11 +228,12 @@ def test_mocked_signed_order_fill_then_nonflat_restart(tmp_path):
         bot = construct(journal)
         bot._reconcile()
         assert bot.manager.ready and venue.deadman_times == [110_000]
-        intent = OrderIntent("BTC", Side.BID, D("98"), D(".01"))
+        intent = OrderIntent("BTC", Side.BID, D("99"), D(".01"))
         actions = bot.manager.reconcile([intent])
         assert len(actions) == 1
         bot._dispatch(actions[0])
         cloid = actions[0].intent.client_order_id
+        assert cloid in venue.order_statuses, "risk-gated order must actually reach fake venue"
         bot._reconcile()
         assert bot.manager.ready and cloid in bot.manager.live_orders
         assert journal.load_all_placements().result()[0].exchange_order_id == 42
@@ -244,7 +245,7 @@ def test_mocked_signed_order_fill_then_nonflat_restart(tmp_path):
         venue.position = ".01"
         venue.fills = [{
             "coin": "pas:BTC", "time": 21_000, "oid": 42, "tid": 1001,
-            "sz": ".01", "px": "98", "fee": "0",
+            "sz": ".01", "px": "99", "fee": "0",
         }]
         bot._reconcile()
         assert bot.manager.ready
