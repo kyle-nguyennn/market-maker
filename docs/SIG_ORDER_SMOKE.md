@@ -2,7 +2,10 @@
 
 **Status:** Attended diagnostic; one controlled buy, not an automated maker.
 The existing `python -m apps.sig_predictions --check` only verifies API reads.
-This procedure exercises signed single-order submission and targeted cancel.
+This procedure exercises signed single-order submission and targeted cancel
+through the published `super-market==0.1.0` SDK. The old handwritten
+REST transport has been deleted. The SDK is constructed with
+`max_retries=0` to avoid automatic retries of ambiguous writes.
 
 ## Prerequisites
 
@@ -10,6 +13,7 @@ This procedure exercises signed single-order submission and targeted cancel.
 - Correct tournament UUID and numeric tradable **exchange ID** (not market ID).
 - Valid, recently updated, two-sided YES book and no prior open orders on that exchange.
 - Check tournament eligibility with SIG before scored participation.
+- Install `python -m pip install -r requirements/sig_predictions.txt` first.
 - Run from the repository root. The script uses the same SIG_PREDICTIONS_API_KEY as --check.
 
 ## Commands
@@ -43,14 +47,14 @@ tests are **examples**, not authorized targets.
   in the future, which is not an independent cancellation guarantee.
 - Script stores the returned orderId and any immediately traded quantity.
 - Script DELETEs only that orderId, then GETs its terminal status.
-- The script also calls `GET /orders/{id}/fills`, reporting whether actual executions are present when the response shape is recognized.
+- The script also calls SDK `orders.list_fills`, reporting the full-order filled quantity and whether there are more pages to reconcile.
 - A terminal order may have filled first. Reconcile portfolio positions afterward.
 
 ## Safety and failure recovery
 
 - Dry run is default. Live requires three explicit flags.
 - SIG has **no post-only guarantee**: price may cross after the preflight.
-- Reject stale, missing/crossed books, near-crossing quotes, and existing scoped orders.
+- Reject stale, missing/crossed books, near-crossing quotes, paginated/incomplete open-order reads, and existing scoped orders.
 - Persist local state to `data/state/sig-smoke-<tournament>-<exchange>.json`
   with fsync **before** POST. A second attempt against the same state file is rejected.
 - **Never blindly retry** a POST after timeout or 409/429/502/503.
