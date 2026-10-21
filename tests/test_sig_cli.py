@@ -183,6 +183,7 @@ def test_phoenix_frame_rejects_invalid_shapes_and_redacts_secrets():
 
 
 def test_phoenix_stream_sends_join_and_prints_only_events(monkeypatch, capsys):
+    pytest.importorskip("websockets", reason="SIG-only realtime dependency not installed in core/Hyperliquid")
     topic = f"tournament:{TID}:markets"
     frames = [
         json.dumps(["1", "1", "realtime:" + topic, "phx_reply",
