@@ -136,6 +136,7 @@ class MVP0PasBot:
         self._last_account_ms = 0
         self._anchor_ms: int | None = None
         self._baseline_equity: Decimal | None = None
+        self._last_deadman_ms = 0
 
     def _venue_open(self, raw: Any, known: dict[str, Any]) -> tuple[LiveOrder, ...]:
         if not isinstance(raw, list):
@@ -199,6 +200,18 @@ class MVP0PasBot:
             raise ReconciliationError("invalid mark")
         return VerifiedAccount({self.instrument: positions.get(venue_coin, Decimal(0))},
                                equity, active, buy, sell, mark), perps
+
+    def _ensure_deadman(self) -> None:
+        """Require a live venue-side cancel-all timer before READY/placement."""
+        if not self.live:
+            return
+        now = self.clock_ms()
+        if self._last_deadman_ms and now - self._last_deadman_ms < 30_000:
+            return
+        # The venue requires at least 5s lead. Refresh every 30s; if the
+        # host dies, the exchange should cancel outstanding orders after 90s.
+        self.client.schedule_cancel_all(now + 90_000)
+        self._last_deadman_ms = now
 
     def _reconcile(self) -> None:
         """OMS thread only: REST/fills/order statuses before making READY true."""
@@ -304,6 +317,7 @@ class MVP0PasBot:
             self.manager.start_recovery("account_changed_during_recovery")
             raise ReconciliationError("account changed during recovery; retry")
         self._last_account, self._last_account_ms = confirmation, self.clock_ms()
+        self._ensure_deadman()
         self.ready_event.set()
 
     def _risk_snapshot(self) -> RiskSnapshot:
@@ -339,6 +353,9 @@ class MVP0PasBot:
                 receipt, sent=outcome.sent, reason=outcome.reason,
                 exchange_order_id=oid,
             ).result(timeout=10)
+            if self.risk.kill_switch:
+                self.journal.latch_kill_switch("pretrade_drawdown").result(timeout=10)
+                raise ReconciliationError("risk kill switch latched; stop new quotes")
         elif isinstance(action, CancelAction):
             # Emergency cancels must not wait for a disk write.
             outcome = self.gateway.dispatch(action, self._risk_snapshot)
@@ -389,6 +406,8 @@ class MVP0PasBot:
             while not self.stop_event.is_set():
                 try:
                     self._reconcile()
+                    if self.live and self.risk.kill_switch:
+                        raise ReconciliationError("risk kill switch active")
                     if self.live and not self.market.ready:
                         self.ready_event.clear()
                         self._cancel_known()
