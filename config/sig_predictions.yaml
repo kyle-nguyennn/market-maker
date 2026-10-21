@@ -53,3 +53,10 @@ execution:
   retry_503_with_exponential_backoff: true
   cancel_all_retry_until_http_200: true
   require_server_confirmation_before_local_cancel: true
+
+# Mainline safety contract; implemented in client constructor, not this YAML.
+runtime:
+  default_trading_enabled: false
+  require_cash_and_outcome_risk_gateway: true
+  require_idempotency_persistence_before_post: true
+  expired_idempotency_409_is_not_retryable: true
