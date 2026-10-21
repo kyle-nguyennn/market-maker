@@ -245,6 +245,19 @@ class HyperliquidVenueClient:
             raise RuntimeError(f"cancel rejected: {entry['error']}")
         raise RuntimeError(f"cancel: unrecognized status: {entry!r}")
 
+    def schedule_cancel_all(self, deadline_ms: int) -> None:
+        """Venue dead-man switch. Deadline must be refreshed while trading.
+
+        A missed deadline requests exchange-side cancellation of all account
+        orders, even if the local Python process or its host disappears.
+        """
+        import time
+        if not isinstance(deadline_ms, int) or deadline_ms <= time.time_ns() // 1_000_000 + 5_000:
+            raise ValueError("dead-man deadline must be at least five seconds ahead")
+        response = self._trader().schedule_cancel(deadline_ms)
+        if not isinstance(response, dict) or response.get("status") != "ok":
+            raise RuntimeError("venue did not accept dead-man cancellation schedule")
+
     def update_leverage(self, instrument: str, leverage: int, *,
                         is_cross: bool = True) -> Any:
         if not isinstance(leverage, int) or isinstance(leverage, bool) or leverage < 1:
