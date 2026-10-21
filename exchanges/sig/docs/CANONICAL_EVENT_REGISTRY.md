@@ -202,18 +202,112 @@ Example: if `C = A AND B`, then `C => A`. Buying one YES(A) and one NO(C) pays a
 
 Develop P0 while researching P1; they are independent. Registry coverage is a primary gating metric: if few markets share provably identical events, logical arbitrage opportunities may be too sparse to justify full automation.
 
-## 7. Questions for the SIG API reconnaissance exercise
+## 7. Logical-arbitrage research workstream: hypotheses and investigation plan
 
-These are **open questions**, not established API guarantees:
+**Status: unanswered research questions, not demonstrated opportunities.** The API schema supports some of the fields and mechanisms below, but does not establish the prevalence of related markets, whether mixed settlement schedules are accepted, or whether executable arbitrage is available in our tournament. Record **observed fact vs documentation claim vs inference** for every finding.
 
-1. Are leaf Contract IDs stable and reusable across distinct Markets, or always local to their trees?
-2. Do `Existing Market` references resolve to enough data to prove event/option equivalence?
-3. What exact data types and normalization rules exist for each `contractType`?
-4. How does a multi-outcome MarketNode tree map to each Exchange's YES payout condition?
-5. What is the exact `IF` operator semantics?
-6. Can otherwise equivalent markets settle differently across public/tournament contexts?
-7. How often are semantically identical events repeated across markets, and at what executable liquidity?
-8. What basket execution guarantees and order-state reconciliation mechanisms does SIG actually offer?
+### 7.1 First-priority questions (P0: determine whether this strategy is viable)
+
+| ID | Investigation question | Why it matters / evidence to collect |
+| --- | --- | --- |
+| **Q01 — Different leaf settlement dates** | **Can atomic Contract leaves of one composite Market have different settlement dates?** If yes, does the root resolve only after the last leaf, when logically determined early, or under some other rule? | `MarketNode.settlementDate` is per-leaf (usually required on creation, with documented exceptions), and read nodes expose `settlement_date`. **This does not prove that the server permits heterogeneous dates in one accepted tree.** Look for actual mixed-date market trees; capture the parent `Market.settlementDate` and observed lifecycle. Ask SIG or validate safely if the behavior remains ambiguous. |
+| **Q02 — Prevalence of exploitable relationships** | **What fraction of accessible markets and Exchanges participates in a *verified logical relationship* with another tradable instrument?** | Inventory the **actual tournament market universe**. Count verified equivalence, complement, implication, conjunction/disjunction, mutual-exclusion and exhaustive-partition relations **separately**. Report denominators, coverage, relation types and confidence; do not use merely similar titles as matches. |
+| **Q03 — Actual arbitrage incidence** | Among logically related markets, **what fraction ever exhibits a positive-net, executable basket at real order-book depth?** | Separate relationship coverage from monetizable opportunity. Sample synchronized snapshots over time; calculate basket size, executable cost, fees, capital lockup, conservative profit floor and order expiry. Report frequency, persistence and achievable notional. |
+| **Q04 — Exchange-to-payoff mapping** | Can we determine each individual Exchange's **exact YES payout condition**, including multi-outcome and composite markets, from the returned nodes and market metadata? | The root tree alone may not identify the settlement option of each Exchange. Establish mapping with API evidence or actual examples; mark unsupported mappings rather than assuming one leaf = one Exchange. |
+| **Q05 — Cross-market event identifiers** | Do different Markets reuse the same atomic event or Contract identifier? How frequently do `Existing Market` references provide verifiable shared identity? | Measure explicit structural links before implementing approximate event matching. Test whether `contract_id` / `node_id` is local to a tree, and how referenced `exchangeId` and `settlementOption` determine the exact event. |
+| **Q06 — Execution feasibility** | Can we place every arbitrage leg in one **fill-atomic** basket in our tournament, at our prices and sizes? | The spec describes `POST /orders/multi-leg` with up to **10 legs**. Default mode atomically places orders but permits individual partial fills/resting. `executionMode: "allOrNone"` is documented as all-legs-filled-or-none **only when all legs are engine-routed**. Determine our route's eligibility, depth, size limits and actual rejection behavior; do not equate atomic submission with atomic execution. |
+| **Q07 — Settlement and context compatibility** | Do the related legs settle against the **same authoritative event, rules, currency and trading context**? Can public and tournament outcomes diverge? | Markets can expose context-specific settlement. Evaluate baskets within the same economically compatible scope; verify rules for cancellations, voids, disputes, differing resolution decisions, collateral and payout denominations. |
+| **Q08 — Enough real opportunities?** | Is the measured *opportunity count × feasible size × conservative net edge* large enough to justify building the production solver? | Build a go/no-go assessment from observed data rather than assuming logical consistency violations are common. Compare projected opportunity value with engineering and operating costs. |
+
+### 7.2 Temporal and settlement semantics (P0–P1)
+
+These questions matter even when event identity and Boolean logic are correct: payout equivalence is not the same as cash-flow equivalence at different dates.
+
+| ID | Question / falsification case |
+| --- | --- |
+| **Q09** | If Contract A settles before Contract B, does an `AND(A,B)` market close, suspend trading, settle partially, or wait? Can an `OR` market settle early once one leaf becomes true? |
+| **Q10** | Is a leaf's `settlementDate` the **observation date**, the last possible occurrence date, the expected settlement processing time, or something else? What is the interpretation when it is null? |
+| **Q11** | Do we observe markets with an identical threshold and source but **different observation times**? Which implication rules are actually valid? E.g. “BTC above $100k **by** December” is generally not the same event as “BTC above $100k **on** December”; an implication across dates requires verified temporal/monotonic semantics. |
+| **Q12** | Can a composite market combine already-settled and unsettled leaves? Are already-settled outcomes visible and immutable within a tournament? |
+| **Q13** | Can an unresolved dispute, cancellation, early termination, or missing oracle observation make a theoretically certain basket have nonstandard payout, delayed payout, or no payout? |
+| **Q14** | If hedged legs mature at different times, how much collateral and capital remains locked, and is the theoretical profit still positive after funding/discounting and liquidity constraints? |
+
+**Suggested test:** record each composite tree's leaf `settlement_date` values, their number of distinct non-null dates, parent `Market.settlementDate`, current root/leaf settlement state and observation time. Stratify single-date, mixed-date, missing-date, and `Imported Market` / monitored `Corporate Earnings` cases. Inspect actual examples before deciding execution policy.
+
+### 7.3 Nature and density of market relationships (P0–P1)
+
+| ID | Investigation question | Test / possible outcome |
+| --- | --- | --- |
+| **Q15 — Identity vs implication** | Besides identical events, how often can we prove **non-identity logical relations** (e.g., same underlying/date/oracle with thresholds `X > 90` implying `X > 80`)? | Registry must eventually export a **verified relation graph**, not just equivalence classes. Prove directionality and inclusivity; retain source-level evidence. |
+| **Q16 — Exclusivity** | Which multi-outcome markets form exactly one exhaustive partition, which are mutually exclusive but non-exhaustive, and which have independently settling options? | Count only **verified** partitions for sum-to-one/arbitrage checks; the API explicitly allows multi-outcome options that are not mutually exclusive. |
+| **Q17 — Logical overlap** | Do unrelated-looking composite markets share atomic conditions, and are the structures deep/rich enough to yield useful cross-market constraints? | Collect AST sizes, distinct canonical events per root, operator counts, shared leaf counts and graph connected-component sizes. |
+| **Q18 — Disjoint vs overlapping contexts** | How much apparent global-market overlap survives after limiting each comparison to the same accessible SIG tournament and tradable currency? | Report overlap within each `tournamentId`, **not** by mixing cross-context books or capital. |
+| **Q19 — Type/category concentration** | Are linkable events concentrated in particular `contractType` / category combinations (Financial Product, Economic Indicator, Election Outcome, etc.)? | Group by category and structured-data completeness; prioritize deterministic normalization where it yields the most connections. |
+| **Q20 — Statistical correlation** | Separately, which markets have significantly correlated traded prices or common underlying factors? Does this add candidates beyond provable logic? | Use histories/quotes only when available and aligned; distinguish liquidity-driven co-movement from underlying event dependence. **Correlation is a relative-value research lead, not certified risk-free arbitrage.** |
+| **Q21 — Event identity stability** | How often do market updates or changes to contract details invalidate a previously verified identity or implication? | Track version drift and revocation rate; ensure the registry publishes immutable snapshots and records invalidations. |
+
+### 7.4 Economic viability, pricing data and execution (P0–P1)
+
+| ID | Investigation question | Test / possible outcome |
+| --- | --- | --- |
+| **Q22** | Are sufficient quote depth and size present simultaneously on every leg, or does an apparent edge exist only at stale mid/last-trade prices? | Use actual executable YES/NO bids/asks and depth, *not* `latestPrice` or implied midpoint. |
+| **Q23** | How do fees, ticks, lot sizes, partial inventory, collateral, credit limits and order constraints change guaranteed net profit? | Full P&L certificate at realistic matched quantities with consistent NO/YES price normalization. |
+| **Q24** | How long do apparent violations persist relative to websocket batching, discovery latency and basket placement? | Repeated market-data snapshots, event timestamps, staleness checks, quote-revision and rejection rates. |
+| **Q25** | What happens when `allOrNone` is unavailable or basket size exceeds 10 legs? Is leg risk acceptably hedgeable? | Feasibility classification: fill-atomic, non-atomic with bounded leg risk, or untradeable. Do not certify net arbitrage from a basket that cannot be executed as assumed. |
+| **Q26** | Do different markets have payout ratios other than unit YES/NO, context-specific settlement currencies, or special settlement treatments? | Verify economic payoff per share; do not extrapolate Boolean payoff alone to a guaranteed cash payoff. |
+| **Q27** | Is apparent arbitrage a single isolated trade, or a repeatable phenomenon after queue priority, competing bots, impact and replenishment? | Measure realized fill rates, net realized P&L and slippage in permitted sandbox/paper tests before live deployment. |
+| **Q28** | Can relationships involve over 10 legs or large event sets, and which pruning/BDD/SAT/LP approach remains tractable? | Measure solver time, memory and candidate volume; split components by independently verifiable relation clusters. |
+
+### 7.5 Market-overlap and opportunity measurement protocol
+
+**Do not answer Q02/Q03 with guessed percentages.** First establish an observable and reproducible market universe.
+
+1. **Universe / sample definition.** Snapshot all discoverable markets via paginated `GET /markets` for the target `tournamentId` and a clearly stated timestamp/window. Record total markets, Exchanges, open/closed states, categories, `isComposite`, `isMultiOutcome`, and availability of readable node trees. Document API visibility restrictions and partial coverage.
+2. **Extract settlement trees.** Fetch `GET /markets/{id}/nodes` with the same scope. Record each leaf, contract type, settlement dates, explicit references and whether the exact Exchange payoff mapping is confirmed.
+3. **Build conservative link categories.** Classify **(a)** identical/equivalent events, **(b)** proven implication, **(c)** complement, **(d)** mutually exclusive outcomes, **(e)** exhaustive partitions, **(f)** statistically correlated or semantically similar candidates **without proof**, and **(g)** unknown. Avoid counting all possible pairs of a many-market cluster as independent evidence.
+4. **Compute coverage at both Market and Exchange levels.** Use only **verified** links for guaranteed-arbitrage eligibility. Analyze graph components and how often events are reused.
+5. **Sample time-aligned executable books.** Check whether logically linked instruments are all open, have a common compatible context, and offer enough depth. Run the payoff-floor optimizer on simultaneous executable quotes, with fees, constraints, settlement/carry and basket execution support.
+6. **Separate market-structure results from economic results.** Report: `candidate`, `verified relationship`, `all legs tradable`, `gross violation`, `positive-net executable`, and `successfully executed` as **different funnel stages**. Recompute on multiple snapshots to avoid treating one transient quote as persistent alpha.
+7. **Validate and version.** Publish the exact snapshot/window, scope, extraction code/version, sample sizes, data omissions, evidence artifacts, and per-relation proof. Distinguish theoretical no-arbitrage bounds from realized execution P&L.
+
+**Primary metrics (proposed; none measured yet):**
+
+| Metric | Definition |
+| --- | --- |
+| **Verified linked-market coverage** | Number of eligible Markets with at least one **cross-market verified logical relation** / number of eligible Markets sampled |
+| **Verified linked-exchange coverage** | Number of eligible Exchanges with a **verified payoff relation to another tradable Exchange** / number of eligible Exchanges |
+| **Related component distribution** | Number and size distribution of non-trivial connected components in the verified event/payoff graph |
+| **Cross-market relationship types** | Counts/rates of equivalence, implication, complementarity, exclusive and exhaustive relations; report separately without silently double-counting |
+| **Executable basket coverage** | Number of verified related components with all required legs tradable at a snapshot / number of related components |
+| **Positive-net opportunity incidence** | Number of synchronized snapshot times containing ≥1 positive-net, execution-feasible basket / total synchronized snapshot times evaluated |
+| **Opportunity economics** | Net profit floor per fully filled basket, feasible matched size/notional, capital committed, time to resolution and execution rejection/fill rate |
+| **Statistical-correlation coverage** | Separate descriptive percentage of pairs/components exhibiting measured correlation under explicit threshold and sample-size rules; **never mix into verified logical-arbitrage coverage** |
+
+**Sampling warning:** markets and pairs are not independent observations; a single popular underlying can create many correlated or logically related pairs. Report unique canonical events, graph components and eligible Exchange counts alongside raw pair counts. A snapshot rate is not the same as the probability that a real trader can capture an opportunity.
+
+### 7.6 Research backlog, validation evidence, and go/no-go decision
+
+Use a small fixed research record per finding:
+
+```text
+question_id, status: unanswered | documented | observed | verified | disproven
+api/schema reference, observation dataset + time + tournamentId
+market IDs, exchange IDs, node IDs, relevant contractDetails
+hypothesis / expected implication, counterexamples tested
+result, confidence and proof evidence, open blockers
+measurement denominator, count, rate and limitations
+```
+
+**First deliverables, ordered by expected payoff:**
+
+1. **Settlement semantics note (Q01, Q09–Q14):** mixed-date sample and outcome of checking parent-versus-leaf resolution timing, including any incompatibility with same-horizon arbitrage.
+2. **Market-universe and relationship coverage report (Q02, Q04, Q05, Q15–Q19):** empirical percentages, proven relation graph, exclusions, and category coverage; produce an initial **no-go** recommendation if verified links are rare.
+3. **Executable arbitrage feasibility report (Q03, Q06–Q08, Q22–Q27):** synchronized orderbooks, positive-net incidence, executable size, `allOrNone` eligibility and any remaining leg/settlement risk.
+4. **Scaling and alternative-alpha note (Q20, Q28):** evaluate solver scaling and statistical relative value **separately** from risk-free logical arbitrage.
+
+**Go/no-go gate:** proceed to live strategy implementation only after demonstrating *both* adequate verified relationship coverage **and** a meaningful, repeatable, economically executable net opportunity. Otherwise retain the registry as research infrastructure and redirect effort to probabilistic/relative-value market making.
+
+**Source-grounded facts worth verifying against live data:** `MarketNode` creation exposes per-leaf `settlementDate`; `MarketTreeContractNode` reads expose `settlement_date`; `Market` includes its own `settlementDate`; `GET /markets` supports `tournamentId`, cursor pagination and composite/multi-outcome filters; `GET /markets/{id}/nodes` supports tournament-scoped reads; `POST /orders/multi-leg` documents the `executionMode: "allOrNone"` engine-routed restriction and a 10-leg cap. None of these statements establishes empirical prevalence or actual competition-route eligibility.
 
 **Do not fill unknowns with assumed semantics.** Mark unsupported markets as such, and distinguish an *API-observed fact* from an *analysis hypothesis* in every research result.
 
