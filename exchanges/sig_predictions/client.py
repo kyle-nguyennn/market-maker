@@ -62,10 +62,19 @@ class SigPredictionsVenueClient:
         *,
         opener: Callable[..., Any] = urlopen,
         timeout_seconds: float = 10.0,
+        allow_trading: bool = False,
     ) -> None:
         self.config = config or SigPredictionsVenueConfig()
         self._opener = opener
+        if timeout_seconds <= 0:
+            raise ValueError('timeout_seconds must be positive')
         self.timeout_seconds = timeout_seconds
+        # Explicit opt-in at construction. Read-only checks never place orders.
+        self.allow_trading = allow_trading
+
+    def _require_trading(self) -> None:
+        if not self.allow_trading:
+            raise PermissionError('SIG trading operations disabled; integrate risk gate before opting in')
 
     def _headers(self, *, json_body: bool = False) -> dict[str, str]:
         api_key = self.config.api_key()
@@ -248,6 +257,7 @@ class SigPredictionsVenueClient:
         return payload
 
     def place_order(self, request: SigOrderRequest) -> SigOrderResult:
+        self._require_trading()
         if not request.idempotency_key:
             raise ValueError("POST /orders requires a client-supplied idempotency key")
         payload = self._request(
@@ -293,6 +303,7 @@ class SigPredictionsVenueClient:
         idempotency_key: str,
         relationship_constraint: str | None = None,
     ) -> dict[str, Any]:
+        self._require_trading()
         if not 1 <= len(requests) <= 10:
             raise ValueError("POST /orders/multi-leg accepts 1 to 10 legs")
         body: dict[str, Any] = {
@@ -312,6 +323,7 @@ class SigPredictionsVenueClient:
         *,
         idempotency_key: str,
     ) -> dict[str, Any]:
+        self._require_trading()
         if not 1 <= len(requests) <= 50:
             raise ValueError("POST /orders/batch accepts 1 to 50 orders")
         return self._request(
@@ -366,6 +378,7 @@ class SigPredictionsVenueClient:
         )
 
     def cancel_order(self, order_id: str | int) -> dict[str, Any]:
+        self._require_trading()
         return self._request("DELETE", f"/orders/{order_id}")
 
     def cancel_all_orders(
@@ -375,6 +388,7 @@ class SigPredictionsVenueClient:
         market_id: str | None = None,
         tournament_id: str | None = None,
     ) -> dict[str, Any]:
+        self._require_trading()
         if exchange_id is not None and market_id is not None:
             raise ValueError("exchange_id and market_id are mutually exclusive")
         return self._request(
