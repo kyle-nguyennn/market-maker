@@ -52,6 +52,36 @@ def positions_from_perps(perps: dict) -> dict[str, Decimal]:
     return positions
 
 
+def scored_unified_equity(spot: dict, perps: dict) -> Decimal:
+    """Authoritative PAS unified equity: USDP spot total + unrealized perp P&L.
+
+    The perps marginSummary.accountValue is NOT the complete funded balance
+    for unified accounts. Missing/ambiguous collateral or P&L fails closed.
+    """
+    if not isinstance(spot, dict) or not isinstance(spot.get("balances"), list):
+        raise ReconciliationError("missing authoritative spot balances")
+    matches = [
+        row for row in spot["balances"]
+        if isinstance(row, dict) and row.get("coin") == "USDP"
+    ]
+    if len(matches) != 1:
+        raise ReconciliationError("missing or duplicate scored USDP collateral")
+    usdp = dec(matches[0].get("total"))
+    if usdp < 0:
+        raise ReconciliationError("negative scored USDP balance")
+    if not isinstance(perps, dict) or not isinstance(perps.get("assetPositions"), list):
+        raise ReconciliationError("missing authoritative perpetual positions")
+    unrealized = Decimal(0)
+    for row in perps["assetPositions"]:
+        if not isinstance(row, dict) or not isinstance(row.get("position"), dict):
+            raise ReconciliationError("malformed perpetual position for equity")
+        unrealized += dec(row["position"].get("unrealizedPnl"))
+    equity = usdp + unrealized
+    if equity <= 0:
+        raise ReconciliationError("nonpositive or unavailable account equity")
+    return equity
+
+
 def venue_status(raw: dict) -> tuple[str, int | None]:
     """Only accept documented orderStatus envelope, never guess on missing keys."""
     if not isinstance(raw, dict) or raw.get("status") != "order":
@@ -179,12 +209,17 @@ class MVP0PasBot:
         for coin, quantity in positions.items():
             if coin != venue_coin and quantity != 0:
                 raise ReconciliationError("position exists outside the single supported market")
-        margin = perps.get("marginSummary")
-        if not isinstance(margin, dict):
-            raise ReconciliationError("missing perp marginSummary")
-        equity = dec(margin["accountValue"])
-        if equity <= 0:
-            raise ReconciliationError("nonpositive or unavailable account equity")
+        if self.client.config.dex == "pas":
+            # PAS is unified-account collateralized by USDP spot. Do NOT size
+            # from marginSummary.accountValue, which can omit spot collateral.
+            equity = scored_unified_equity(self.client.query_spot_balance(self.wallet), perps)
+        else:
+            margin = perps.get("marginSummary")
+            if not isinstance(margin, dict):
+                raise ReconciliationError("missing perp marginSummary")
+            equity = dec(margin["accountValue"])
+            if equity <= 0:
+                raise ReconciliationError("nonpositive or unavailable account equity")
         raw_open = self.client.query_open_orders(self.wallet)
         active = self._venue_open(raw_open, known)
         data = self.client.query_active_asset_data(self.wallet, self.instrument)
