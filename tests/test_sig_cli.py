@@ -222,3 +222,70 @@ def test_phoenix_stream_sends_join_and_prints_only_events(monkeypatch, capsys):
     assert fake_socket.sent[0][3] == "phx_join"
     assert fake_socket.sent[0][4]["access_token"] == "JWT_DO_NOT_LOG"
     assert fake_socket.sent[0][2] == "realtime:" + topic
+
+
+def test_quickstart_parsers_resolve_tournament_price_and_public_streams():
+    td = sig_cli.args_parser(["tournament", "some-tournament"])
+    assert td.slug == "some-tournament"
+    px = sig_cli.args_parser(["price", "36", "--tournament-id", TID])
+    assert px.exchange_id == "36"
+    assert px.tournament_id == TID
+    pub_market = sig_cli.args_parser(["stream", "--market-id", "26", "--seconds", "60"])
+    assert ws.channel_name(pub_market, {}) == "market:26:combined"
+    pub_exchange = sig_cli.args_parser(["stream", "--exchange-id", "36", "--seconds", "60"])
+    assert ws.channel_name(pub_exchange, {}) == "market:36"
+    with pytest.raises(ValueError, match="public"):
+        pub_exchange.tournament_id = TID
+        ws.channel_name(pub_exchange, {})
+    own = sig_cli.args_parser(["stream", "--user", "--tournament-id", TID,
+                               "--tournament-slug", "sample-slug"])
+    assert own.tournament_slug == "sample-slug"
+
+
+def test_uploaded_openapi_market_context_is_preserved_by_cli(capsys):
+    class SDKMarkets:
+        def list_markets(self, **kwargs):
+            return {
+                "markets": [{
+                    "id": "26", "title": "Sample", "status": "open",
+                    "exchanges": [{"id": "36", "option": "YES", "latestPrice": None}],
+                    "contexts": [
+                        {"type": "tournament", "tournament": {
+                            "id": TID, "slug": "sample-slug", "name": "Sample",
+                            "currencyName": "SUSQies", "isOngoingPlay": False,
+                        }, "status": "open", "exchanges": [{"id": "36", "latestPrice": 0.42}]},
+                        {"type": "public", "tournament": None, "status": "open",
+                         "exchanges": [{"id": "36", "latestPrice": 0.45}]},
+                    ],
+                }],
+                "pagination": {"hasMore": False, "nextCursor": None},
+            }
+    args = sig_cli.args_parser(["markets", "--limit", "5"])
+    sig_cli.markets(SDKMarkets(), args)
+    entry = json.loads(capsys.readouterr().out.strip())
+    assert entry["marketId"] == "26"
+    assert entry["exchanges"][0]["exchangeId"] == "36"
+    assert entry["contexts"][0]["tournament"]["id"] == TID
+    assert entry["contexts"][0]["tournament"]["slug"] == "sample-slug"
+    assert entry["contexts"][1]["tournament"] is None
+
+
+def test_market_revision_gap_requires_authoritative_resync():
+    updates = {}
+    one = {"event": "market_batch", "payload": {
+        "delivery": {"revision": 2, "previousRevision": 1},
+        "trades": [{"sequence": 7}],
+    }}
+    assert ws.revision_alerts(one, updates) == []
+    two = {"event": "market_batch", "payload": {
+        "delivery": {"revision": 4, "previousRevision": 3},
+        "trades": [{"sequence": 9}],
+    }}
+    assert any("gap" in explanation for _, explanation in ws.revision_alerts(two, updates))
+    three = {"event": "market_batch", "payload": {
+        "delivery": {"revision": 5, "previousRevision": 4},
+        "resyncRequired": True, "trades": [{"sequence": None}],
+    }}
+    alert = ws.revision_alerts(three, updates)
+    assert any(msg == "resyncRequired" for _, msg in alert)
+    assert any("null" in msg for _, msg in alert)
