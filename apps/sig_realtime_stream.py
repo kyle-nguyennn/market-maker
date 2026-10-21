@@ -23,7 +23,7 @@ def safe_event(event: object) -> object:
     if isinstance(event, dict):
         return {
             k: ("[REDACTED]" if any(x in k.lower().replace("_", "") for x in
-                   ("token", "apikey", "authorization", "secret", "jwt"))
+                   ("token", "apikey", "anonkey", "authorization", "bearerauth", "secret", "jwt"))
                 else safe_event(v))
             for k, v in event.items()
         }
