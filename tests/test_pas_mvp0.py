@@ -149,3 +149,125 @@ def test_quote_is_passive_and_never_submits_itself():
     assert [o.side for o in orders] == [Side.BID, Side.ASK]
     assert orders[0].price < D("99")
     assert orders[1].price > D("101")
+
+
+def test_mocked_signed_order_fill_then_nonflat_restart(tmp_path):
+    """Place/rest, fill while quoter is away, restart using durable ledger."""
+    from execution.order_manager import OrderManager
+    from execution.safe_gateway import SafeExecutionGateway
+    from exchanges.hyperliquid.types import VenueOrderResult
+    from model.order import OrderIntent
+
+    class TradingVenue(FakeVenue):
+        def __init__(self):
+            super().__init__()
+            self.order_statuses = {}
+            self.deadman_times = []
+
+        def schedule_cancel_all(self, deadline):
+            self.deadman_times.append(deadline)
+
+        def place_order(self, request):
+            oid = 42
+            self.open_orders.append({
+                "coin": request.instrument, "cloid": request.client_order_id,
+                "oid": oid, "side": "B", "limitPx": request.price, "sz": request.size,
+            })
+            self.order_statuses[request.client_order_id] = ("open", oid)
+            return VenueOrderResult(status="resting", order_id=oid)
+
+        def query_order_status(self, address, *, client_order_id):
+            self.status_calls += 1
+            status, oid = self.order_statuses[client_order_id]
+            return {"status": "order", "order": {
+                "status": status, "order": {"oid": oid}
+            }}
+
+        def cancel_order(self, instrument, *, client_order_id):
+            self.open_orders = [
+                x for x in self.open_orders if x["cloid"] != client_order_id
+            ]
+            self.order_statuses[client_order_id] = ("canceled", 42)
+            return True
+
+    class FreshMarket:
+        def current(self):
+            from model.market import MarketState, BookLevel
+            return MarketState("BTC", 20_000,
+                               (BookLevel(D("99"), D("1")),),
+                               (BookLevel(D("101"), D("1")),))
+
+    venue = TradingVenue()
+    adapter = HyperliquidMarketAdapter(venue.config)
+    limits = RiskLimits(
+        max_abs_position=D("1"), max_order_notional=D("100"),
+        max_abs_notional=D("1000"), max_drawdown=D("50"),
+        max_market_data_age_ms=2000, min_order_notional=D(".01"),
+        max_gross_notional=D("1000"), max_net_notional=D("1000"),
+        max_quote_deviation_bps=D("100"),
+    )
+
+    def construct(journal):
+        manager = OrderManager(dex="pas", account_id=WALLET)
+        risk = RiskManager(limits)
+        gateway = SafeExecutionGateway(
+            manager=manager, risk=risk, adapter=adapter, client=venue,
+            market_spec=HyperliquidMarketSpec(sz_decimals=4),
+            live_enabled=True, operator_authorized=True,
+        )
+        return MVP0PasBot(
+            client=venue, adapter=adapter, market=FreshMarket(),
+            manager=manager, gateway=gateway, risk=risk, journal=journal,
+            team_wallet=WALLET, instrument="BTC",
+            quoter=PassiveQuoter(size=D(".01"), edge_bps=D("5")),
+            live=True, verified_unified=True, clock_ms=lambda: 20_000,
+        )
+
+    path = tmp_path / "mvp0.sqlite"
+    with SQLiteWALJournal(path, dex="pas", account_id=WALLET) as journal:
+        bot = construct(journal)
+        bot._reconcile()
+        assert bot.manager.ready and venue.deadman_times == [110_000]
+        intent = OrderIntent("BTC", Side.BID, D("98"), D(".01"))
+        actions = bot.manager.reconcile([intent])
+        assert len(actions) == 1
+        bot._dispatch(actions[0])
+        cloid = actions[0].intent.client_order_id
+        bot._reconcile()
+        assert bot.manager.ready and cloid in bot.manager.live_orders
+
+        # Fill happens while the Quoter is not doing any work.
+        venue.open_orders.clear()
+        venue.order_statuses[cloid] = ("filled", 42)
+        venue.position = ".01"
+        venue.fills = [{
+            "coin": "pas:BTC", "time": 21_000, "oid": 42, "tid": 1001,
+            "sz": ".01", "px": "98", "fee": "0",
+        }]
+        bot._reconcile()
+        assert bot.manager.ready
+        assert journal.load_fill_positions().result()["BTC"] == D(".01")
+        assert journal.load_all_placements().result()[0].dispatch_state == "CLOSED"
+
+    # New OMS and SQLite writer must recover nonzero position, never reset anchor.
+    with SQLiteWALJournal(path, dex="pas", account_id=WALLET) as journal:
+        restarted = construct(journal)
+        restarted._reconcile()
+        assert restarted.manager.ready
+        assert restarted.ready_event.is_set()
+        assert journal.load_fill_positions().result()["BTC"] == D(".01")
+
+
+def test_post_anchor_unmapped_fill_blocks_recovery(tmp_path):
+    bot, venue, journal = make_bot(tmp_path)
+    try:
+        bot._reconcile()
+        venue.fills.append({
+            "coin": "pas:BTC", "time": 25_000, "oid": 999, "tid": 25,
+            "sz": ".01", "px": "100", "fee": "0",
+        })
+        with pytest.raises(ReconciliationError, match="unmapped fill"):
+            bot._reconcile()
+        assert not bot.ready_event.is_set()
+    finally:
+        journal.close()
