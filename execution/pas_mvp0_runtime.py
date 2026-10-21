@@ -214,7 +214,9 @@ class MVP0PasBot:
             if anchor is None:
                 if all_orders or account.open_orders or any(account.positions.values()):
                     raise ReconciliationError("first boot requires flat account and no prior orders")
-                anchor = self.journal.initialize_flat_anchor(\n                    self.clock_ms(), account.equity\n                ).result(timeout=10)
+                anchor = self.journal.initialize_flat_anchor(
+                    self.clock_ms(), account.equity
+                ).result(timeout=10)
             self._anchor_ms = anchor
             self._baseline_equity = self.journal.load_baseline_equity().result(timeout=10)
             if self._baseline_equity is None or self._baseline_equity <= 0:
@@ -281,7 +283,9 @@ class MVP0PasBot:
                 if cloid not in known or known[cloid].dispatch_state == "NOT_SENT":
                     raise ReconciliationError("unexpected active local order")
                 if cloid not in confirmed_closed:
-                    status, _ = venue_status(self.client.query_order_status(\n                        self.wallet, client_order_id=cloid\n                    ))
+                    status, _ = venue_status(self.client.query_order_status(
+                        self.wallet, client_order_id=cloid
+                    ))
                     if status not in TERMINAL_VENUE_STATUSES:
                         raise ReconciliationError("disappeared order not confirmed terminal")
                     confirmed_closed.add(cloid)
