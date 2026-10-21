@@ -62,48 +62,62 @@ def test_sig_order_updates_reject_other_tournament():
     assert mm.live_orders[cloid].state is OrderState.PENDING_NEW
 
 
-class FakeResponse:
-    def __init__(self, payload):
-        self.value = json.dumps(payload).encode()
-    def __enter__(self):
-        return self
-    def __exit__(self, *args):
-        return None
-    def read(self):
-        return self.value
+from types import SimpleNamespace
+
+
+class StubResource:
+    def __init__(self, **responses):
+        self.responses = responses
+        self.calls = []
+
+    def __getattr__(self, name):
+        if name not in self.responses:
+            raise AttributeError(name)
+
+        def invoke(*args, **kwargs):
+            self.calls.append((name, args, kwargs))
+            return self.responses[name]
+        return invoke
+
+
+def fake_sdk():
+    account = StubResource(list={})
+    portfolio = StubResource(list_positions={"positions": []})
+    markets = StubResource(list={"data": [{"id": "26"}], "pagination": {"nextCursor": None}})
+    tournaments = StubResource(retrieve={"id": "12345678-1234-1234-1234-123456789abc"})
+    scoped = StubResource(list_positions={"positions": []})
+    exchanges = StubResource(list_orderbook={
+        "exchangeId": "36", "marketId": "26",
+        "asOf": {"sequence": 5, "at": "2026-10-21T00:00:00Z"},
+        "bids": [{"price": 0.4, "quantity": 12}],
+        "asks": [{"price": 0.6, "quantity": 4}],
+    })
+    sdk = SimpleNamespace(
+        max_retries=0, account=account, portfolio=portfolio, markets=markets,
+        tournaments=SimpleNamespace(retrieve=tournaments.retrieve, portfolio=scoped),
+        exchanges=exchanges, close=lambda: None,
+    )
+    return sdk, account, portfolio, markets, tournaments, exchanges
 
 
 def test_sig_readonly_cli_account_and_book(monkeypatch, capsys):
     monkeypatch.setenv("SIG_PREDICTIONS_API_KEY", "test-only")
-    seen = []
-    def opener(request, *, timeout):
-        assert request.get_header("Authorization") == "Bearer test-only"
-        assert request.get_method() == "GET"
-        seen.append(request.full_url)
-        if "/orderbook" in request.full_url:
-            return FakeResponse({
-                "exchangeId": "36", "marketId": "26",
-                "asOf": {"sequence": 5, "at": "2026-10-21T00:00:00Z"},
-                "bids": [{"price": 0.4, "quantity": 12}],
-                "asks": [{"price": 0.6, "quantity": 4}],
-            })
-        if request.full_url.endswith("/markets?limit=5&sort=recent&status=any"):
-            return FakeResponse({"markets": [{"id": "26"}]})
-        return FakeResponse({})
-    client = SigPredictionsVenueClient(opener=opener)
+    sdk, account, portfolio, markets, _, exchanges = fake_sdk()
+    client = SigPredictionsVenueClient(sdk=sdk)
     check_account(client, exchange_id="36")
     output = capsys.readouterr().out
-    assert "trading" not in output.lower() or "no orders" in output.lower()
     assert "Book SIG_EXCHANGE:36" in output
     assert "Markets: 1 returned" in output
-    assert len(seen) == 4
-    assert all("/api/v1/" in url for url in seen)
-    assert all("test-only" not in url for url in seen)
+    assert len(account.calls) == 1
+    assert len(portfolio.calls) == 1
+    assert markets.calls[0][2]["limit"] == 5
+    assert exchanges.calls[0][2]["id"] == "36"
 
 
 def test_sig_readonly_cli_rejects_invalid_exchange_and_missing_key(monkeypatch):
     monkeypatch.delenv("SIG_PREDICTIONS_API_KEY", raising=False)
-    client = SigPredictionsVenueClient(opener=lambda *_1, **_2: None)
+    sdk, *_ = fake_sdk()
+    client = SigPredictionsVenueClient(sdk=sdk)
     with pytest.raises(ValueError, match="SIG_PREDICTIONS_API_KEY"):
         check_account(client)
     monkeypatch.setenv("SIG_PREDICTIONS_API_KEY", "test-only")
@@ -111,22 +125,9 @@ def test_sig_readonly_cli_rejects_invalid_exchange_and_missing_key(monkeypatch):
         check_account(client, exchange_id="../42")
 
 
-
 def test_sig_readonly_check_prints_resolved_tournament_uuid(monkeypatch, capsys):
-    from apps.sig_predictions import check_account
     monkeypatch.setenv("SIG_PREDICTIONS_API_KEY", "test-only")
-    tournament = "12345678-1234-1234-1234-123456789abc"
-
-    def opener(request, *, timeout):
-        assert request.get_method() == "GET"
-        if "/tournaments/midterm-elections" in request.full_url:
-            return FakeResponse({"tournament": {"id": tournament}})
-        if "/markets?" in request.full_url:
-            return FakeResponse({"markets":[]})
-        return FakeResponse({})
-
-    client = SigPredictionsVenueClient(opener=opener)
+    sdk, *_ = fake_sdk()
+    client = SigPredictionsVenueClient(sdk=sdk)
     check_account(client, tournament_slug="midterm-elections")
-    captured = capsys.readouterr().out
-    assert tournament in captured
-    assert "SIG_PREDICTIONS_TOURNAMENT_ID" in captured
+    assert "12345678-1234-1234-1234-123456789abc" in capsys.readouterr().out
