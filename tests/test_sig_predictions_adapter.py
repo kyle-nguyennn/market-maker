@@ -395,3 +395,49 @@ def test_sdk_cancel_all_must_be_scoped():
     with pytest.raises(ValueError, match="unscoped"):
         client.cancel_all_orders()
     assert client.cancel_all_orders(exchange_id="36") == {"cancelled": 0}
+
+
+
+def test_sdk_batch_multileg_and_scoped_cancel_use_generated_request_models():
+    sdk_module = pytest.importorskip("super_market")
+    import httpx
+    captured = []
+
+    def handler(req):
+        captured.append((req.method, req.url.path, json.loads(req.content)))
+        if req.url.path == "/api/v1/orders/batch":
+            return httpx.Response(200, json={"results": []})
+        if req.url.path == "/api/v1/orders/multi-leg":
+            return httpx.Response(200, json={"results": []})
+        if req.url.path == "/api/v1/orders/cancel-all":
+            return httpx.Response(200, json={"cancelled": 2})
+        raise AssertionError(f"unexpected SDK write: {req.method} {req.url}")
+
+    transport = httpx.Client(transport=httpx.MockTransport(handler))
+    sdk = sdk_module.SuperMarketAPI(
+        bearer_auth="test-key", max_retries=0, http_client=transport,
+        base_url="https://www.thesuper.market/api/v1",
+    )
+    try:
+        client = SigPredictionsVenueClient(sdk=sdk, allow_trading=True)
+        leg = SigOrderRequest(
+            exchange_id="36", outcome=OutcomeSide.NO, action=OrderAction.BUY,
+            price=0.58, quantity=2, tournament_id="t1",
+        )
+        assert client.place_batch([leg], idempotency_key="batch-one") == {"results": []}
+        assert client.place_multi_leg([leg], idempotency_key="multi-one") == {"results": []}
+        assert client.cancel_all_orders(exchange_id="36", tournament_id="t1") == {"cancelled": 2}
+        assert len(captured) == 3
+        batch = captured[0][2]
+        assert batch["idempotencyKey"] == "batch-one"
+        assert batch["orders"] == [{
+            "exchangeId": "36", "side": "no", "action": "buy",
+            "price": 0.58, "quantity": 2, "tournamentId": "t1",
+        }]
+        multi = captured[1][2]
+        assert multi["idempotencyKey"] == "multi-one"
+        assert multi["legs"] == batch["orders"]
+        assert captured[2][2] == {"exchangeId": "36", "tournamentId": "t1"}
+    finally:
+        sdk.close()
+        transport.close()
