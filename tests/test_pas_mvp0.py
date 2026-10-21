@@ -167,6 +167,9 @@ def test_mocked_signed_order_fill_then_nonflat_restart(tmp_path):
         def schedule_cancel_all(self, deadline):
             self.deadman_times.append(deadline)
 
+        def query_account_mode(self, account):
+            return "unifiedAccount"
+
         def place_order(self, request):
             oid = 42
             self.open_orders.append({
