@@ -225,6 +225,8 @@ def test_supervisor_scope_mismatch_invalid_book_and_kill_switch():
     fresh_start(s, mm, clock)
     s.on_market_update(EventScope("hyperliquid", "par", SCOPE.account_id), valid=True)
     assert not s.check().allowed and s.reason == "wrong_signal_scope"
+    s.on_market_update(SCOPE, valid=True)
+    s.on_bot_heartbeat(SCOPE)
     mm.resynchronize([], positions_reconciled=True, fills_reconciled=True)
     s.on_reconciled(SCOPE, ReconcileResult(True, "reconciled"))
     assert s.arm(operator_authorized=True).allowed
@@ -285,3 +287,16 @@ def test_sig_tournament_scoping_without_hyperliquid_assumptions():
     other = venue(EventScope("sig", "predictions-cup", "account-a", "tournament-2"),
                   pos={"SIG_EXCHANGE:123": D("20")}, cash="980")
     assert not recon.verify(local, other, now=NOW).verified
+
+
+def test_supervisor_fails_closed_on_pretrade_exception():
+    clock, mm = Clock(), manager()
+    def broken_check(*_):
+        raise RuntimeError("internal risk checker failed")
+    s = SafetySupervisor(mm, SCOPE, SafetyPolicy(5, 10, 20),
+                         pretrade_check=broken_check, risk_killed=lambda: False,
+                         clock=clock)
+    fresh_start(s, mm, clock)
+    decision = s.authorize_placement(OrderIntent("BTC", Side.BID, D("1"), D("1")), None)
+    assert not decision.allowed and decision.reason == "pretrade_check_failed"
+    assert s.state is TradingState.PAUSED and not mm.ready
