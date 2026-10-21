@@ -108,6 +108,7 @@ class MVP0PasBot:
         gateway: SafeExecutionGateway, risk: RiskManager, journal: SQLiteWALJournal,
         team_wallet: str, instrument: str, quoter: PassiveQuoter,
         live: bool = False, verified_unified: bool = False,
+        attended: bool = False,
         poll_s: float = 2.0, quote_s: float = 1.0,
         clock_ms: Callable[[], int] | None = None,
     ) -> None:
@@ -127,6 +128,8 @@ class MVP0PasBot:
         self.manager, self.gateway, self.risk, self.journal = manager, gateway, risk, journal
         self.wallet, self.instrument, self.quoter = team_wallet, instrument, quoter
         self.live, self.verified_unified = live, verified_unified
+        self.attended = attended
+        self._deadman_ineligible = False
         self.poll_s, self.quote_s = poll_s, quote_s
         self.clock_ms = clock_ms or (lambda: time.time_ns() // 1_000_000)
         self.stop_event = threading.Event()
@@ -203,14 +206,27 @@ class MVP0PasBot:
 
     def _ensure_deadman(self) -> None:
         """Require a live venue-side cancel-all timer before READY/placement."""
-        if not self.live:
+        if not self.live or self._deadman_ineligible:
             return
         now = self.clock_ms()
         if self._last_deadman_ms and now - self._last_deadman_ms < 30_000:
             return
         # The venue requires at least 5s lead. Refresh every 30s; if the
         # host dies, the exchange should cancel outstanding orders after 90s.
-        self.client.schedule_cancel_all(now + 90_000)
+        try:
+            self.client.schedule_cancel_all(now + 90_000)
+        except RuntimeError as exc:
+            # The official participant guide: eligibility requires $1M of
+            # volume. ONLY this known response can be bypassed and ONLY for
+            # an explicitly attended initial micro-order trial.
+            if self.attended and "enough volume traded" in str(exc).lower():
+                LOG.warning(
+                    "Account not eligible for venue dead-man switch; "
+                    "ATTENDED TRIAL ONLY. Monitor/cancel orders manually."
+                )
+                self._deadman_ineligible = True
+                return
+            raise
         self._last_deadman_ms = now
 
     def _reconcile(self) -> None:
