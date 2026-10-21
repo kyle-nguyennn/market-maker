@@ -191,3 +191,27 @@ client have been removed. The generated SDK defaults to automatic retries,
 but the facade enforces `max_retries=0`; write authorization remains
 opt-in and the order smoke's fsynced idempotency journal remains unchanged.
 The existing `--sdk` CLI flag is accepted as a deprecated no-op alias.
+
+### SIG API v1 — manual interactive testing CLI
+
+Use the dedicated [manual SIG CLI runbook](docs/SIG_MANUAL_CLI.md)
+to discover current tournament IDs/slugs, markets and atomic exchange IDs,
+preview orders, inspect fills, and stream authenticated Supabase Realtime
+market/user events to stdout. All REST calls use the published Scalar SDK.
+
+```bash
+python -m pip install -r requirements/sig_predictions.txt
+python -m apps.sig_cli --help
+python -m apps.sig_cli tournaments --status active
+python -m apps.sig_cli markets --status open
+python -m apps.sig_cli exchanges
+python -m apps.sig_cli stream --user --seconds 60
+```
+
+Signed order submission/cancellation require explicit `--live` and exact ID
+confirmations. Every order placement fsyncs a unique idempotency key
+before POST and never blindly resubmits ambiguous acknowledgments.
+Realtime is best-effort and must be reconciled with REST, not traded on
+directly. The generated SDK handles REST/token minting; the WS probe uses
+Supabase's published Phoenix protocol with a separate venue-only
+`websockets` dependency.
