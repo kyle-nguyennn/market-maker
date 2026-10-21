@@ -119,6 +119,13 @@ class HyperliquidVenueClient:
     def query_positions(self, team_wallet: str) -> Any:
         return self._read().user_state(_team_address(team_wallet), dex=self.config.dex)
 
+    def query_account_mode(self, team_wallet: str) -> str:
+        """Read the team wallet's actual mode, not an operator assumption."""
+        result = self._read().query_user_abstraction_state(_team_address(team_wallet))
+        if result not in ("unifiedAccount", "standard"):
+            raise ValueError("unrecognized userAbstraction account mode")
+        return result
+
     def query_active_asset_data(self, team_wallet: str, instrument: str) -> Any:
         """Read user+coin availableToTrade/maxTradeSzs without signing.
 
