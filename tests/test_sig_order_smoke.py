@@ -55,7 +55,7 @@ class FakeClient:
         assert kwargs["status"] == "open"
         assert kwargs["exchange_id"] == "36"
         assert kwargs["tournament_id"] == TOURNAMENT
-        return {"orders": list(self.existing_orders), "nextCursor": None}
+        return {"orders": list(self.existing_orders), "nextCursor": None, "hasMore": False}
 
     def place_order(self, order):
         assert self.allow_trading
@@ -87,7 +87,7 @@ class FakeClient:
 
     def get_order_fills(self, oid):
         assert str(oid) == "42"
-        return {"fills": list(self.order_fills), "nextCursor": None}
+        return {"fills": list(self.order_fills), "nextCursor": None, "hasMore": False, "totalQuantityFilled": sum(int(x["quantity"]) for x in self.order_fills)}
 
     def cancel_order(self, oid):
         assert self.allow_trading
