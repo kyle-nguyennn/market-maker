@@ -21,7 +21,7 @@ from execution.sqlite_journal import SQLiteWALJournal
 from exchanges.hyperliquid.client import HyperliquidVenueClient
 from market_handler.hyperliquid_adapter import HyperliquidMarketAdapter
 from market_handler.hyperliquid_market_data_handler import HyperliquidMarketDataHandler
-from model.order import CancelAction, OrderIntent, PlaceAction, Side
+from model.order import CancelAction, OrderIntent, PlaceAction, Side, OrderEvent, OrderEventType
 from risk.risk_manager import RiskManager, RiskSnapshot
 
 LOG = logging.getLogger(__name__)
@@ -235,6 +235,13 @@ class MVP0PasBot:
             if self._baseline_equity is None or self._baseline_equity <= 0:
                 raise ReconciliationError("missing persisted account equity baseline")
 
+        if self.live and self._baseline_equity is not None:
+            limit = self.risk.limits.max_drawdown
+            if limit is None or account.equity < self._baseline_equity - limit:
+                self.risk.trigger_kill_switch()
+                self.journal.latch_kill_switch("account_drawdown_limit").result(timeout=10)
+                raise ReconciliationError("persisted drawdown kill switch")
+
         # Resolve all unresolved journal orders (PREPARED remains potentially sent).
         unresolved = [p for p in all_orders if p.dispatch_state in ("PREPARED", "SENT")]
         observed = {o.client_order_id: o for o in account.open_orders}
@@ -290,6 +297,25 @@ class MVP0PasBot:
                 fee=dec(f["fee"]), event_ts_ms=ts,
             ).result(timeout=10)
         expected = self.journal.load_fill_positions().result(timeout=10)
+        # Update the in-memory status of orders that became terminal on venue.
+        for cloid in confirmed_closed:
+            order = self.manager.live_orders.get(cloid)
+            if order is not None and order.active:
+                status, oid = venue_status(self.client.query_order_status(
+                    self.wallet, client_order_id=cloid,
+                ))
+                kind = {
+                    "filled": OrderEventType.FILLED,
+                    "canceled": OrderEventType.CANCELLED,
+                    "rejected": OrderEventType.REJECTED,
+                }.get(status)
+                if kind is None:
+                    raise ReconciliationError("terminal state became ambiguous")
+                self.manager.on_order_update(OrderEvent(
+                    cloid, kind, exchange_order_id=oid, instrument=self.instrument,
+                    cumulative_filled_size=order.original_size if kind is OrderEventType.FILLED else None,
+                    dex=self.manager.dex, account_id=self.wallet,
+                ))
         # Prior OMS state can remain active even after its journal row is CLOSED.
         for cloid, old in self.manager.live_orders.items():
             if old.active and cloid not in observed:
@@ -400,9 +426,11 @@ class MVP0PasBot:
     def run(self) -> None:
         """Call from the OMS owner/main thread; errors pause rather than restart blind."""
         worker = threading.Thread(target=self._quoter_loop, name="pas-quoter", daemon=True)
-        self.market.start()
-        worker.start()
+        started = False
         try:
+            self.market.start()
+            worker.start()
+            started = True
             while not self.stop_event.is_set():
                 try:
                     self._reconcile()
@@ -439,6 +467,9 @@ class MVP0PasBot:
                 self._cancel_known()
             self.ready_event.clear()
             self.stop_event.set()
-            worker.join(timeout=3)
-            self.market.stop()
-            self.client.close_stream()
+            if started:
+                worker.join(timeout=3)
+            try:
+                self.market.stop()
+            finally:
+                self.client.close_stream()
