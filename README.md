@@ -119,3 +119,31 @@ books, team balance and approved agent separately before any scored trading:
 ```bash
 python -m apps.perpetual_alpha --check --dex pas --instrument BTC
 ```
+
+## SIG Predictions Cup — read-only first
+
+The SIG v1 API wrapper and YES-normalized adapter are ported to mainline.
+Use a participant API key from the SIG account profile. Do not commit keys.
+
+```bash
+export SIG_PREDICTIONS_API_KEY='<your participant API key>'
+python -m apps.sig_predictions
+python -m apps.sig_predictions --check
+# Optional: use a real exchange ID, not the market container ID:
+python -m apps.sig_predictions --check --exchange-id 36
+```
+
+Optionally export SIG_PREDICTIONS_TOURNAMENT_ID to scope market/book queries
+or pass --tournament-slug for tournament-specific portfolio reads.
+
+**Read-only by default.** The CLI never sends orders. API client signed
+order/cancel methods require explicit allow_trading=True, but this flag
+does not replace risk approval. Cash/outcome risk, order persistence,
+authoritative reconciliation, rate limits and realtime recovery remain
+essential before unattended trading.
+
+Internal instrument: SIG_EXCHANGE:<exchange_id>. Internal BID -> BUY YES
+at p; ASK -> BUY NO at (1-p). SIG does **not** support post-only orders.
+Set post_only=False explicitly only after accounting for crossing risk.
+
+See [SIG integration](docs/SIG_PREDICTIONS.md).
