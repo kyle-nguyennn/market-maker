@@ -259,9 +259,14 @@ def args_parser(argv=None):
         if name == "markets":
             a.add_argument("--status", choices=("open", "closed", "settled", "any"), default="open")
             a.add_argument("--search")
-    m = s.add_parser("market", help="market info and exchange IDs")
+    td = s.add_parser("tournament", help="inspect exact tournament slug and its scoped balance")
+    td.add_argument("slug")
+        m = s.add_parser("market", help="market info and exchange IDs")
     m.add_argument("market_id")
     m.add_argument("--tournament-id", default=os.getenv("SIG_PREDICTIONS_TOURNAMENT_ID"))
+    pp = s.add_parser("price", help="exchange price snapshot in selected tournament context")
+    pp.add_argument("exchange_id", type=numeric_id)
+    pp.add_argument("--tournament-id", default=os.getenv("SIG_PREDICTIONS_TOURNAMENT_ID"))
     b = s.add_parser("book", help="exchange order book")
     b.add_argument("exchange_id", type=numeric_id)
     b.add_argument("--tournament-id", default=os.getenv("SIG_PREDICTIONS_TOURNAMENT_ID"))
@@ -333,6 +338,8 @@ def main(argv=None):
             markets(client, args)
         elif args.command == "exchanges":
             exchanges(client, args)
+        elif args.command == "tournament":
+            emit({"kind": "tournament_detail", **client.get_tournament(args.slug)})
         elif args.command == "market":
             emit({"kind": "market_detail", **client.get_market(
                 args.market_id, tournament_id=args.tournament_id)})
