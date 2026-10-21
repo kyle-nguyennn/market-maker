@@ -43,8 +43,8 @@ tests are **examples**, not authorized targets.
   in the future, which is not an independent cancellation guarantee.
 - Script stores the returned orderId and any immediately traded quantity.
 - Script DELETEs only that orderId, then GETs its terminal status.
-- A terminal order may have filled first. Independently inspect
-  `GET /orders/{id}/fills` and portfolio positions afterward.
+- The script also calls `GET /orders/{id}/fills`, reporting whether actual executions are present when the response shape is recognized.
+- A terminal order may have filled first. Reconcile portfolio positions afterward.
 
 ## Safety and failure recovery
 
