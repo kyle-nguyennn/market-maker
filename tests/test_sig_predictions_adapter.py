@@ -233,7 +233,7 @@ def test_client_serializes_exact_single_order_shape(
             }
         )
 
-    client = SigPredictionsVenueClient(opener=opener)
+    client = SigPredictionsVenueClient(opener=opener, allow_trading=True)
     result = client.place_order(
         SigOrderRequest(
             exchange_id="36",
@@ -286,3 +286,34 @@ def test_realtime_channel_and_retry_classification(
         code="VALIDATION_ERROR",
         message="bad input",
     ).retryable
+
+
+
+def test_client_is_readonly_by_default_even_when_api_key_is_present(monkeypatch):
+    monkeypatch.setenv("SIG_PREDICTIONS_API_KEY", "test-only")
+    called = []
+    def should_not_call(*args, **kwargs):
+        called.append((args, kwargs))
+        raise AssertionError("request should never be dispatched")
+    client = SigPredictionsVenueClient(opener=should_not_call)
+    request = SigOrderRequest(
+        exchange_id="36", outcome=OutcomeSide.YES, action=OrderAction.BUY,
+        quantity=1, price=0.5, idempotency_key="unique-key",
+    )
+    with pytest.raises(PermissionError):
+        client.place_order(request)
+    with pytest.raises(PermissionError):
+        client.place_multi_leg([request], idempotency_key="multi")
+    with pytest.raises(PermissionError):
+        client.place_batch([request], idempotency_key="batch")
+    with pytest.raises(PermissionError):
+        client.cancel_order(123)
+    with pytest.raises(PermissionError):
+        client.cancel_all_orders(exchange_id="36")
+    assert called == []
+
+
+def test_idempotency_expiry_is_not_retryable():
+    error = SigApiError(status=409, code="IDEMPOTENCY_KEY_EXPIRED",
+                        message="expired")
+    assert not error.retryable
