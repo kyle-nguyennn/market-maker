@@ -1,0 +1,10 @@
+# Core + SIG Predictions generated Python SDK.
+# Install from repository root; SDK is isolated from the Hyperliquid environment.
+name: market-maker
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - "-r requirements/sig_predictions.txt"

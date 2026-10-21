@@ -119,3 +119,99 @@ books, team balance and approved agent separately before any scored trading:
 ```bash
 python -m apps.perpetual_alpha --check --dex pas --instrument BTC
 ```
+
+## SIG Predictions Cup — read-only first
+
+The SIG v1 client uses the published Scalar Python SDK exclusively; the
+YES-normalized market adapter remains in our venue layer.
+Use a participant API key from the SIG account profile. Do not commit keys.
+
+```bash
+export SIG_PREDICTIONS_API_KEY='<your participant API key>'
+python -m apps.sig_predictions
+python -m apps.sig_predictions --check
+# Optional: use a real exchange ID, not the market container ID:
+python -m apps.sig_predictions --check --exchange-id 36
+```
+
+Optionally export SIG_PREDICTIONS_TOURNAMENT_ID to scope market/book queries
+or pass --tournament-slug for tournament-specific portfolio reads.
+
+**Read-only by default.** The CLI never sends orders. API client signed
+order/cancel methods require explicit allow_trading=True, but this flag
+does not replace risk approval. Cash/outcome risk, order persistence,
+authoritative reconciliation, rate limits and realtime recovery remain
+essential before unattended trading.
+
+Internal instrument: SIG_EXCHANGE:<exchange_id>. Internal BID -> BUY YES
+at p; ASK -> BUY NO at (1-p). SIG does **not** support post-only orders.
+Set post_only=False explicitly only after accounting for crossing risk.
+
+See [SIG integration](docs/SIG_PREDICTIONS.md).
+
+### SIG single-order smoke (attended only)
+
+After the read-only `--check` succeeds, use the safe GET-only preflight:
+
+```bash
+export SIG_PREDICTIONS_TOURNAMENT_ID='<actual tournament UUID>'
+python -m apps.sig_order_smoke --exchange-id <real exchange ID>
+```
+
+The explicitly authorized live mode submits **BUY YES, 1 share @ 0.005 SUSQies**
+and tries to cancel only that order. SIG has no post-only guarantee, so a fill
+is still possible. The command refuses stale/invalid books or other open orders,
+persists an idempotency key before POST, and stops on uncertain order state.
+
+See [SIG order/cancel smoke runbook](docs/SIG_ORDER_SMOKE.md) for live flags,
+recovery, and the remaining requirements before unattended trading.
+
+### SIG-only environment (published Scalar SDK)
+
+The published [Super Market Python SDK](https://pypi.org/project/super-market/)
+is version-pinned in `requirements/sig_predictions.txt` as `super-market==0.1.0`.
+The Python import is `super_market`. Neither core nor Hyperliquid installs it.
+
+```bash
+conda env create --format environment-yaml -f environment.sig_predictions.yml
+conda activate market-maker
+python -m pip check
+# SDK-backed read-only check; no requests can place/cancel orders:
+python -m apps.sig_predictions --check
+# Optional tournament and exchange (replace values from SIG):
+python -m apps.sig_predictions --check --tournament-slug midterm-elections --exchange-id 36
+```
+
+For an existing core environment, use
+`python -m pip install -r requirements/sig_predictions.txt`.
+All SIG API operations now use `SuperMarketAPI` through the single
+`SigPredictionsVenueClient` facade, including attended submit/cancel.
+The previous handwritten urllib HTTP transport and redundant SDK-read
+client have been removed. The generated SDK defaults to automatic retries,
+but the facade enforces `max_retries=0`; write authorization remains
+opt-in and the order smoke's fsynced idempotency journal remains unchanged.
+The existing `--sdk` CLI flag is accepted as a deprecated no-op alias.
+
+### SIG API v1 — manual interactive testing CLI
+
+Use the dedicated [manual SIG CLI runbook](docs/SIG_MANUAL_CLI.md)
+to discover current tournament IDs/slugs, markets and atomic exchange IDs,
+preview orders, inspect fills, and stream authenticated Supabase Realtime
+market/user events to stdout. All REST calls use the published Scalar SDK.
+
+```bash
+python -m pip install -r requirements/sig_predictions.txt
+python -m apps.sig_cli --help
+python -m apps.sig_cli tournaments --status active
+python -m apps.sig_cli markets --status open
+python -m apps.sig_cli exchanges
+python -m apps.sig_cli stream --user --seconds 60
+```
+
+Signed order submission/cancellation require explicit `--live` and exact ID
+confirmations. Every order placement fsyncs a unique idempotency key
+before POST and never blindly resubmits ambiguous acknowledgments.
+Realtime is best-effort and must be reconciled with REST, not traded on
+directly. The generated SDK handles REST/token minting; the WS probe uses
+Supabase's published Phoenix protocol with a separate venue-only
+`websockets` dependency.
