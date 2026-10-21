@@ -56,5 +56,16 @@ jobs:
           print("PAS margin equity positive:", Decimal(perps["marginSummary"]["accountValue"]) > 0, flush=True)
           print("PAS buy/sell size capacities positive:", [Decimal(x) > 0 for x in caps], flush=True)
           print("PAS API SDK supports exchange-side dead-man:", True, flush=True)
+          balances = spot.get("balances", [])
+          usdp = next((b for b in balances if b.get("coin") == "USDP"), None)
+          print("PAS USDP balance entry exists:", usdp is not None, flush=True)
+          print("PAS USDP spot total positive:", (
+              Decimal(usdp.get("total", "0")) > 0 if usdp else False
+          ), flush=True)
+          try:
+              mode = client._read().query_user_abstraction_state(account)
+              print("PAS userAbstraction result:", mode, flush=True)
+          except Exception as exc:
+              print("PAS userAbstraction query unavailable:", type(exc).__name__, flush=True)
           print("No private key or signed action. No balances or order content printed.")
           PY
