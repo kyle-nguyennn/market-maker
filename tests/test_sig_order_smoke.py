@@ -28,6 +28,7 @@ class FakeClient:
         self.cancels = []
         self.status_reads = []
         self.book_age = 1
+        self.book_bid = "0.4"
         self.book_ask = "0.6"
         self.existing_orders = []
         self.order_open = True
@@ -44,7 +45,7 @@ class FakeClient:
         return SigOrderBookSnapshot(
             exchange_id=str(exchange_id), market_id="26",
             timestamp_ms=int(ts.timestamp() * 1000),
-            bids=(SigBookLevel("0.4", "10"),),
+            bids=(SigBookLevel(self.book_bid, "10"),),
             asks=(SigBookLevel(self.book_ask, "10"),),
             as_of=SigBookVersion(10, ts.isoformat()),
         )
@@ -166,10 +167,12 @@ def test_cancel_failure_retains_order_id_for_safe_recovery(tmp_path, monkeypatch
 
 def test_scope_checks_and_non_crossing_book_fail_closed(tmp_path):
     client = FakeClient(live=True, path=tmp_path / "s.json")
+    client.book_bid = "0.005"
     client.book_ask = "0.01"
     with pytest.raises(SmokeUncertain, match="best ask too close"):
         smoke(client, exchange_id="36", tournament_id=TOURNAMENT,
               state_path=client.path, live=True)
+    client.book_bid = "0.4"
     client.book_ask = "0.6"
     client.book_age = 900
     with pytest.raises(SmokeUncertain, match="too old"):
