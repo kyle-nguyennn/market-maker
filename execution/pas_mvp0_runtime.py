@@ -171,6 +171,8 @@ class MVP0PasBot:
         return tuple(result)
 
     def _read_account(self, known: dict[str, Any]) -> tuple[VerifiedAccount, dict]:
+        if self.live and self.client.query_account_mode(self.wallet) != "unifiedAccount":
+            raise ReconciliationError("actual team account is not unifiedAccount")
         perps = self.client.query_positions(self.wallet)
         positions = positions_from_perps(perps)
         venue_coin = self.adapter.to_venue_instrument(self.instrument)
