@@ -51,7 +51,8 @@ def fake_sdk():
     ), account, markets, positions, scoped, book
 
 
-def test_sdk_client_normalizes_market_collection_and_book(capsys):
+def test_sdk_client_normalizes_market_collection_and_book(capsys, monkeypatch):
+    monkeypatch.setenv("SIG_PREDICTIONS_API_KEY", "test-only")
     sdk, account, markets, positions, _, book = fake_sdk()
     client = SigPredictionsSDKReadClient(sdk=sdk)
     check_account(client, exchange_id="36")
