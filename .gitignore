@@ -216,3 +216,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Durable local SIG placement journals and private market/account feed captures.
+/data/state/
+sig-feed*.jsonl
