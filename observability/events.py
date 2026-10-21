@@ -56,7 +56,7 @@ def _safe(value: Any) -> Any:
     if isinstance(value, Decimal):
         if not value.is_finite():
             raise ValueError("nonfinite Decimal in event")
-        return str(value)
+        return format(value, "f")
     if value is None or isinstance(value, (str, int, bool)):
         return value
     if isinstance(value, float):
