@@ -232,3 +232,20 @@ Source: https://sig.thesuper.market/docs/changelog
 6. Then explicitly enable signed actions behind the actual send gateway.
 
 Until those are done, do not deploy an unattended scored bot.
+
+## Competition eligibility preflight — blocking human check
+
+Before using the scored tournament, verify eligibility directly against the
+[Official Rules](https://predictionscup.com/rules/) (last updated
+September 30, 2026). Requirements include residence in an eligible
+jurisdiction, active qualifying student enrollment, and individual (not team)
+participation. **Singapore does not appear in the eligible residence list.**
+The rules also specify study at an accredited institution in the participant's
+country of residence; cross-border/online enrollment deserves explicit
+clarification rather than an assumption.
+
+Do not infer contest/prize eligibility from successful registration, API
+authentication, or a trading balance. For an exception or eligibility
+interpretation, contact predictionscup@sig.com before placing scored orders.
+
+Source: https://predictionscup.com/rules/
