@@ -50,21 +50,27 @@ def socket_url(supabase_url: str, anon_key: str) -> str:
 
 
 def channel_name(args, token_data: dict) -> str:
+    """Select exactly one documented topic; market and exchange IDs differ."""
+    from apps.sig_cli import tournament_id, numeric_id
     if args.user:
         channels = token_data.get("channels")
         if not isinstance(channels, dict) or not isinstance(channels.get("user"), str):
             raise ValueError("missing user realtime channel")
+        if not channels["user"].startswith("user:"):
+            raise ValueError("unrecognized user channel scope")
         return channels["user"]
-    from apps.sig_cli import tournament_id
-    tid = tournament_id(args.tournament_id)
     if args.all_markets:
-        return f"tournament:{tid}:markets"
-    if not args.market_id or not args.market_id.isdigit() or int(args.market_id) <= 0:
-        raise ValueError("market ID must be a positive numeric string")
-    # Unlike order placement, a Realtime market channel is keyed by marketId,
-    # not exchangeId. Multiple exchanges can belong to one market.
-    return f"tournament:{tid}:market:{args.market_id}"
-
+        return f"tournament:{tournament_id(args.tournament_id)}:markets"
+    if getattr(args, "exchange_id", None):
+        if args.tournament_id:
+            raise ValueError("--exchange-id WS topic is public; use --market-id for tournament channels")
+        return f"market:{numeric_id(args.exchange_id)}"
+    if not getattr(args, "market_id", None):
+        raise ValueError("market ID required")
+    mid = numeric_id(args.market_id)
+    if args.tournament_id:
+        return f"tournament:{tournament_id(args.tournament_id)}:market:{mid}"
+    return f"market:{mid}:combined"
 
 def parse_phoenix_message(raw: str) -> tuple[str | None, str, str, dict, str | None]:
     """Normalize Supabase Phoenix v2 arrays; fail closed on unknown schema."""
@@ -147,7 +153,7 @@ async def listen_once(client: SigPredictionsVenueClient, args, *, deadline: floa
 
 async def stream(client: SigPredictionsVenueClient, args) -> None:
     """Print events until duration/count/interrupt, reconnect after lost sessions."""
-    if args.user is False:
+    if args.all_markets:
         from apps.sig_cli import tournament_id
         tournament_id(args.tournament_id)
     deadline = time.monotonic() + args.seconds
