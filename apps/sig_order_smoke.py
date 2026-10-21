@@ -42,8 +42,8 @@ def _order_rows(payload: object) -> list[dict]:
     orders = payload["orders"]
     if any(not isinstance(row, dict) for row in orders):
         raise SmokeUncertain("malformed open-order entry")
-    if payload.get("nextCursor") or payload.get("cursor"):
-        raise SmokeUncertain("open orders are paginated; manual reconciliation required")
+    if payload.get("hasMore") is not False or payload.get("nextCursor"):
+        raise SmokeUncertain("open-order coverage incomplete or paginated; do not place")
     return orders
 
 
@@ -122,11 +122,13 @@ def _report_fills(client: SigPredictionsVenueClient, order_id: int | str) -> Non
         print("Fills: unrecognized API response; inspect order fills and portfolio manually.")
         return
     cursor = payload.get("nextCursor") if isinstance(payload, dict) else None
-    if cursor:
+    if cursor or payload.get("hasMore") is not False:
         print(f"Fills: at least {len(fills)} record(s), more pages; inspect all fills manually.")
     else:
-        print(f"Fills: {len(fills)} execution record(s). " +
-              ("A real trade occurred; reconcile portfolio positions." if fills else
+        total = payload.get("totalQuantityFilled")
+        print(f"Fills: {len(fills)} execution record(s), total filled={total}. " +
+              ("A real trade occurred; reconcile portfolio positions." if fills or
+               total not in (None, 0, "0") else
                "No executions shown for this order."))
     return
 
@@ -300,12 +302,12 @@ def main() -> None:
         raise SystemExit("live requires --confirm-exchange-id <same ID> and --accept-fill-risk")
     if args.recover and not args.live:
         raise SystemExit("--recover requires --live and confirmation (it may send a cancel)")
-    client = SigPredictionsVenueClient(allow_trading=args.live)
-    smoke(
-        client, exchange_id=exchange_id, tournament_id=tournament_id,
-        state_path=path, live=args.live,
-        max_book_age_s=args.max_book_age_seconds, recover=args.recover,
-    )
+    with SigPredictionsVenueClient(allow_trading=args.live) as client:
+        smoke(
+            client, exchange_id=exchange_id, tournament_id=tournament_id,
+            state_path=path, live=args.live,
+            max_book_age_s=args.max_book_age_seconds, recover=args.recover,
+        )
 
 
 if __name__ == "__main__":
