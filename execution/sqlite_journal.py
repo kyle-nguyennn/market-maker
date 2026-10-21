@@ -363,6 +363,20 @@ class SQLiteWALJournal:
             )
         return self._submit(read)
 
+    def checkpoint(self, *, truncate: bool = False) -> Future[tuple[int, int, int]]:
+        """Explicit OFF-HOT-PATH WAL checkpoint. Schedule only during idle/maintenance.
+
+        Returns (busy, wal_pages, checkpointed_pages) from SQLite. A busy
+        checkpoint is not proof all WAL pages were checkpointed.
+        """
+        mode = "TRUNCATE" if truncate else "PASSIVE"
+        def run(conn: sqlite3.Connection) -> tuple[int, int, int]:
+            result = conn.execute(f"PRAGMA wal_checkpoint({mode})").fetchone()
+            if result is None:
+                raise JournalUnavailable("WAL checkpoint returned no result")
+            return tuple(result)
+        return self._submit(run)
+
     def close(self) -> None:
         """Drain accepted writes. Call from process shutdown, not a market callback."""
         with self._lock:
