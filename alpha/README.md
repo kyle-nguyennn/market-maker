@@ -131,6 +131,19 @@ repository**, not from this publishable package. It supports both legacy
 `quote_context(StrategyContext)`, which can consume signals/features while
 still returning quotes for the downstream risk gateway.
 
+## Strategy-layer development (PR #17)
+
+The package now also exposes `MomentumSignalModel` and
+`MeanReversionSignalModel` (explicit fixed-rule return-forecast hypotheses),
+plus `StrategyEngine.evaluate(context)`, which evaluates multiple independent
+`Strategy` families on exactly the same point-in-time `StrategyContext`.
+The latter produces a `StrategyBatch` of **separately attributed, non-executable**
+decisions, rather than an implicit portfolio merger or automatic selector.
+
+See [STRATEGIES.md](./STRATEGIES.md) for model equations, versioning,
+configuration, forecast limitations, single-strategy replay wiring,
+market-making adapters, research comparison and remaining validations.
+
 ## Important non-goals and limits
 
 - Strict `interval_ms` contiguity requires a future exchange-session-aware
