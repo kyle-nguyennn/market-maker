@@ -82,13 +82,13 @@ def test_bar_available_after_decision_is_invisible_even_when_already_closed():
 
 
 def test_after_late_bar_publishes_it_can_participate_in_replay():
-    bars = [bar(1), bar(2), bar(3), bar(4, available_at_ms=5500),
-            bar(5, available_at_ms=5520)]
-    pre = build(bars, decision_at_ms=5100, config=config(max_staleness_ms=3000))
-    assert pre.observed_at_ms == 3000
-    post = build(bars, decision_at_ms=5600)
-    assert post.observed_at_ms == 5000
-    assert post.available_at_ms == 5520
+    bars = [bar(1), bar(2), bar(3), bar(4),
+            bar(5, available_at_ms=6500), bar(6, available_at_ms=6520)]
+    pre = build(bars, decision_at_ms=6100, config=config(max_staleness_ms=3000))
+    assert pre.observed_at_ms == 4000
+    post = build(bars, decision_at_ms=6600)
+    assert post.observed_at_ms == 6000
+    assert post.available_at_ms == 6520
     assert pre.snapshot_id != post.snapshot_id
 
 
