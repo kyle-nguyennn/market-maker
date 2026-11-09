@@ -193,3 +193,19 @@ def test_builtin_transport_reads_http_errors(monkeypatch):
     assert response.status == 429
     assert response.headers["Retry-After"] == "5"
     assert decode_json(response.body)["error"]["code"] == "RATE_LIMITED"
+
+
+def test_public_discovery_reads_and_validation():
+    client, calls = fixture_client()
+    client.get_agent_trades("my-agent", page=2, limit=15)
+    assert calls[-1][0].full_url.endswith("/agents/my-agent/trades?page=2&limit=15")
+    client.get_leaderboard()
+    assert calls[-1][0].full_url.endswith("/leaderboard")
+    client.get_strategies()
+    assert calls[-1][0].full_url.endswith("/strategies")
+    assert all(request.get_header("Authorization") is None for request, _ in calls)
+    with pytest.raises(ValueError):
+        client.get_agent_trades("../escape")
+    with pytest.raises(ValueError):
+        client.get_agent_trades("valid-agent", limit=101)
+    assert len(calls) == 3
