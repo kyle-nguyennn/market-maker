@@ -93,3 +93,49 @@ Feature names / units:
 **Date:** 2026-11-09. **Status:** Deferred work, not implemented in P2-A.
 
 Implement one conservative fixed-rule `AlphaStrategy` baseline against `momentum` only after P2-A contract and CI review. Define a forecast horizon and a *documented, calibratable mapping* from descriptive trailing return to expected future return; do not assert that trailing return itself is statistically unbiased forecast. Add the fixed mean-reversion, momentum, static ensemble, regime selector and cost-aware walk-forward evaluator in independent, tested increments. No AlpArena signal submission until portfolio safety/reconciliation and dry-run controls are developed.
+
+
+## ADR-010 — Vendored-for-now, independently publishable `alpha/` package
+
+**Date:** 2026-11-09. **Status:** Accepted.
+
+**Decision:** Keep feature calculation, rolling FeatureEngine, SignalEngine, Strategy contracts and baseline directional policies under `market-maker/alpha/` for now. Treat that directory as a standalone standard-library-only package that could later be moved to a separate repository or distributed artifact without rewriting the public interface. No imports from `model/`, `quoter/`, `execution/`, `exchanges/`, Redis or SDK packages are allowed inside `alpha/`. Bridge to existing market-maker types in `quoter/alpha_strategy_adapter.py`, not inside the publishable package.
+
+**Rationale:** Fast iteration inside the active competition repository while preserving an extraction seam for a future feature/signal library. We are explicitly **not** migrating it to `market-ai-platform` now.
+
+**Consequence:** `alpha/strategy.py` defines a narrow structural `MarketView` protocol and immutable `PortfolioSnapshot`, not concrete `model.MarketState` or `portfolio.PortfolioState` types. This may produce small adapter objects and duplicate immutable views; avoid hidden SDK dependencies just to reduce adapters. A future extraction needs its own package metadata, semantic versioning and serializable schemas, not a blind directory copy.
+
+## ADR-011 — Separate pure calculation, rolling feature state, and signal inference
+
+**Date:** 2026-11-09. **Status:** Accepted.
+
+**Decision:**
+- `PriceFeatureCalculator` in `alpha/calculators.py` is a pure, replaceable numerical calculator implementing `FeatureCalculator.calculate(history)`. Calculation contains no feed clock, history storage, I/O or trading decisions. Existing `build_price_features` retains P2-A point-in-time validation, provenance and snapshot assembly and now delegates to that calculator.
+- `FeatureEngine` in `alpha/feature_engine.py` owns one symbol's bounded rolling OHLCV window, source/interval identity, ordering, warmup, missing-bar invalidation and as-of lookup. It emits immutable `FeatureSnapshot` objects.
+- `SignalEngine` in `alpha/signal_engine.py` owns registered `SignalModel` predictors and checks generated outputs against feature snapshot ID, symbol, feature availability, generation timestamp and model identity. It publishes immutable `AlphaSignal` tuples. It is not a research feature store or trading executor.
+
+**Rationale:** Cheap incremental observation ingestion should not be coupled to prediction policy; pure calculation must be equally testable in replay and in live mode. New calculators or inference models can be swapped independently.
+
+**Trade-off:** For correctness simplicity, the current engine recomputes from its bounded rolling window on each completed bar rather than maintaining O(1) update formulas. Optimization can follow profiling and reference-baseline equivalence tests. P2 price features remain deliberately simple reference statistics, not finished alpha research.
+
+## ADR-012 — One market-data ingestion API for replay and live
+
+**Date:** 2026-11-09. **Status:** Accepted.
+
+**Decision:** Both live and replay producers call `FeatureEngine.on_bar(PriceBar, at_ms=...)`; a composed `AlphaPipeline.on_bar(...)` invokes FeatureEngine -> SignalEngine -> Strategy and returns a non-executable `PipelineResult`. `replay_bars` / `replay_pipeline` are thin adapters that sort historical bars by **publication availability**, and invoke those exact live methods. No `is_backtest`, `is_live` branch, history-store reference or clock read inside strategies.
+
+**Quality semantics:** Reject out-of-order/duplicate end times, unavailable publications, backward arrival clocks, mixed symbol or source versions; on a completed-bar interval gap, **discard the rolling window and require fresh warmup**. Retain explicit gap counters. Latest snapshots still validate staleness. Any feature-dependent strategy must abstain during warmup.
+
+**Known limitation:** The current event input is a *completed price bar* only, not a generalized L2 or trade event. High-frequency SHIFT features (order flow, microprice, queue dynamics) need a separate typed observation/calculator family behind the same conceptual ingestion boundary. Runtime assumes one producer per engine; concurrency/lock-free hot-path handling is not yet validated. Delayed arrival that reorders historical bar ends fails closed. Real equity sessions require the planned calendar-aware normalizer before viable AlphArena studies.
+
+## ADR-013 — Strategy generalizes MM quoter and directional policies
+
+**Date:** 2026-11-09. **Status:** Accepted.
+
+**Decision:** `SignalModel.predict(features, generated_at_ms)` is the new pure forecasting interface; retain P1's `AlphaStrategy.generate_signal(snapshot)` Protocol for compatibility, but do not implement new policy classes against it. `Strategy.decide(StrategyContext)` is the common policy contract. `StrategyContext` contains as-of-aligned features, signals, an optional venue-neutral market view and optional immutable portfolio view.
+
+`StrategyDecision` can contain a tuple of desired `TargetExposure` values (directional families), a tuple of non-executable `QuoteProposal` values (market-making), or both empty to abstain. Mixing exposures and quotes in the same policy return is initially forbidden. A policy does **not** place orders, send positions, size to venue precision, or bypass downstream risk controls.
+
+**Compatibility:** `quoter/alpha_strategy_adapter.py` adapts existing `BaseMMQuoter.quote(MarketState)` to `Strategy.decide(context)`, and also supports `quote_context(context)` for future alpha-aware MM quoters that consume full feature/signal/portfolio inputs. `MomentumStrategy` and `MeanReversionStrategy` are initial fixed-threshold, fixed-target-weight *policy skeletons* consuming forecasts selected by `SignalEngine`. They are not fitted predictive models and no profitability is claimed.
+
+**Next:** Define a multi-strategy regime selector/compositor, portfolio-level cross-symbol construction, market-context freshness/revisions, live feed bridge and offline transaction-cost evaluator separately. Do not make `BaseMMQuoter` inherit a strategy whose domain contract imports market-maker-specific Quote objects.
