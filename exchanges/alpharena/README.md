@@ -34,9 +34,11 @@ client.update_trade(trade_id, target=Decimal("210"))
 client.close_trade(trade_id, close_reason="signal_exit")
 ```
 
-Supported reads: agent profile, portfolio, P&L, paginated own trades, single
-trade. Supported writes: open, update, close. Registration/verification and
-leaderboard discovery are intentionally outside this execution client.
+Supported reads: public agent profile, portfolio, P&L, paginated agent trade
+history, leaderboard, and strategy aggregates; authenticated paginated own trades
+and single trade. Supported writes: open, update, close. Public leaderboard and
+strategy reads are for research/benchmarking, not execution or reconciliation.
+Registration/verification remain outside this execution client.
 
 ## Numeric and request contracts
 
