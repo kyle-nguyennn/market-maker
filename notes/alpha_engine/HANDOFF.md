@@ -79,9 +79,11 @@ PriceBar (live or replay) -> FeatureEngine.on_bar
 - `tests/test_alpaca_market_data.py` uses mocked historical/stream clients;
   `.github/workflows/alpaca-market-data-tests.yml` installs the real SDK
   for constructor/request-model compatibility (no network/API keys).
-- First pinned SDK run #42595183411 caught a real import error:
-  `Sort` is in `alpaca.common.enums`. Fixed. Check latest SDK workflow,
-  full Hyperliquid suite, and record exact results before merging.
+- Pinned SDK runs caught three subtle assumptions: `Sort` is in
+  `alpaca.common.enums`; `TimeFrame` must be compared by amount/unit (not
+  Python object equality); and SDK stock requests normalize aware UTC
+  datetimes to naive UTC values. Adapter and contract assertions corrected.
+- Verified [Alpaca SDK CI #42595645025](https://github.com/kyle-nguyennn/market-maker/actions/runs/42595645025): 16 passed; [full tests #42595645012](https://github.com/kyle-nguyennn/market-maker/actions/runs/42595645012): 353 passed, 1 skipped in both default and PAS, read-only PAS success. **New live SDK constructor smoke test added afterward**; check latest head before merging.
 - AlpArena does not supply a documented public equities OHLCV feed; use this
   Alpaca data adapter for its independent features, while preserving the
   separate paper-position AlpArena execution API.
