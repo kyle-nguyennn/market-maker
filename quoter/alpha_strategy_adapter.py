@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from alpha.strategy import QuoteProposal, StrategyContext, StrategyDecision
+from alpha.strategy import QuoteProposal, Strategy, StrategyContext, StrategyDecision
 from model.market import MarketState
 from model.order import Quote
 from .base_quoter import BaseMMQuoter
@@ -20,7 +20,7 @@ class ContextualMMQuoter(Protocol):
         ...
 
 
-class MarketMakingStrategy:
+class MarketMakingStrategy(Strategy):
     """Market-making is one Strategy family, alongside directional strategies.
 
     A legacy BaseMMQuoter receives only MarketState. A contextual quoter can
