@@ -11,7 +11,7 @@ from typing import Sequence
 
 from .domain import AlphaSignal, FeatureSnapshot, _timestamp
 from .feature_engine import FeatureEngine
-from .market_data import PriceBar
+from .observations import PriceBar
 from .signal_engine import SignalEngine
 from .strategy import MarketView, PortfolioSnapshot, Strategy, StrategyContext, StrategyDecision
 
