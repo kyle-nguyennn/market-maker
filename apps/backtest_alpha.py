@@ -170,7 +170,7 @@ def _export(result: BacktestResult, directory: Path) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     _write_csv(directory / "equity.csv", [
         dict(as_of_ms=p.as_of_ms, bar_end_ms=p.bar_end_ms,
-             close_price=p.close_price, cash=p.cash,
+             close_price=p.close_price, mark_price=p.mark_price, cash=p.cash,
              position_quantity=p.position_quantity, equity=p.equity)
         for p in result.equity_curve
     ])
