@@ -11,7 +11,7 @@
 | P1 development branch | `feat/shared-alpha-domain-p1` |
 | P1 PR | **Merged** — [PR #15](https://github.com/kyle-nguyennn/market-maker/pull/15), squash commit `7d4c774d4ebdb24ebe0e081bb99b1b072a5ea288` |
 | P2-A branch | `feat/alpha-p2-point-in-time-features` (based on post-P1 `main`) |
-| P2-A PR | To be recorded after opening |
+| P2-A PR | **Open draft:** [PR #16](https://github.com/kyle-nguyennn/market-maker/pull/16) |
 | Live AlphArena sandbox trade test | **Not performed / not authorized** |
 
 ## P1 — Domain interfaces (this branch)
@@ -30,7 +30,8 @@
 ## Next milestones (no claim of implementation)
 
 - [x] P2-A implementation on development branch: versioned immutable OHLCV `PriceBar` with observation and availability clocks, strict Decimal CSV loader, injected provider Protocol, point-in-time feature builder, configuration, SHA-256 snapshot identity and adversarial tests.
-- [ ] P2-A CI validation on latest HEAD, review and merge. No real market-data source or live API calls yet.
+- [x] P2-A code validated at commit `7245a401df2c42947506bf04687dc005615d3e00`: [CI run #42576909832](https://github.com/kyle-nguyennn/market-maker/actions/runs/42576909832), **324 passed** (default), **324 passed** (`PERPETUAL_ALPHA_DEX=pas`), read-only PAS job passed. Earlier run #42576707495 identified a test-only ambient Decimal-context assertion; corrected before this green run.
+- [ ] Review [PR #16](https://github.com/kyle-nguyennn/market-maker/pull/16) and verify latest HEAD checks before merge. No real market-data source or live API calls yet.
 - [ ] P2-B: trading-calendar-aware equity/session preprocessing, vendor-specific adjustment/revision policies and baseline fixed strategy.
 - [ ] P2: trend, momentum, mean-reversion strategies and static ensemble baseline with identical signal contract.
 - [ ] P2: regime classifier / selector with a fixed-baseline comparison; avoid hidden fitting on the test period.
