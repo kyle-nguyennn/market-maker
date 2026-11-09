@@ -45,7 +45,7 @@ class SignalEngine:
         output = []
         seen = set()
         for model in self._models:
-            result = model.generate_signal(features)
+            result = model.predict(features, generated_at_ms=generated_at_ms)
             if result is None:
                 continue
             if not isinstance(result, AlphaSignal):
