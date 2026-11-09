@@ -11,7 +11,8 @@
 | P1 development branch | `feat/shared-alpha-domain-p1` |
 | P1 PR | **Merged** — [PR #15](https://github.com/kyle-nguyennn/market-maker/pull/15), squash commit `7d4c774d4ebdb24ebe0e081bb99b1b072a5ea288` |
 | P2-A branch | `feat/alpha-p2-point-in-time-features` (based on post-P1 `main`) |
-| P2-A PR | **Merged:** [PR #16](https://github.com/kyle-nguyennn/market-maker/pull/16), squash commit `4956b350a34b1640285538a4aa8e6713352679cd` |\n| Strategy-layer PR | **Open draft:** [PR #17](https://github.com/kyle-nguyennn/market-maker/pull/17), branch `feat/alpha-strategy-baselines` |
+| P2-A PR | **Merged:** [PR #16](https://github.com/kyle-nguyennn/market-maker/pull/16), squash commit `4956b350a34b1640285538a4aa8e6713352679cd` |\n| Strategy-layer PR | **Merged:** [PR #17](https://github.com/kyle-nguyennn/market-maker/pull/17), squash commit `5bf9fb77fec846ca92e8b92e72c1928b18a247f0` |
+| P3 bar backtesting | **Open draft:** [PR #18](https://github.com/kyle-nguyennn/market-maker/pull/18), branch `feat/alpha-p3-causal-backtest` |
 | Live AlphArena sandbox trade test | **Not performed / not authorized** |
 
 ## P1 — Domain interfaces (this branch)
@@ -99,13 +100,28 @@
 - [x] `alpha/signal_models.py`: immutable `MomentumSignalModel` and `MeanReversionSignalModel` that implement `SignalModel.predict`, operate on immutable as-of feature snapshots, and preserve `model_version`, `feature_version`, forecast horizon and deterministic signal IDs. Coefficients/thresholds are explicit research hypotheses, **not fitted or calibrated**.
 - [x] `alpha/strategy_engine.py`: `StrategyEngine.evaluate(StrategyContext)` runs multiple `Strategy` subclasses on the **same** immutable context, including `MarketMakingStrategy(BaseMMQuoter)`, but returns separately attributed proposals rather than a combined executable allocation.
 - [x] Validate candidate decision identity/time/signal lineage/quote requirements. Invalid market and optional caller-selected feature/market/portfolio freshness limits cause explicit whole-batch abstention with `StrategyBatch.skipped_reason`.
-- [x] `tests/test_alpha_strategy_baselines.py` exercises positive and negative forecasts, abstention, missing/wrong features, determinism under altered Decimal context, source/version and model IDs, replay versus live-style parity, matching MM + directional family outputs and batch validation fail-closed.
+- [x] `tests/test_alpha_strategy_baselines.py tests/test_alpha_causal_backtest.py tests/test_alpha_backtest_cli.py` exercises positive and negative forecasts, abstention, missing/wrong features, determinism under altered Decimal context, source/version and model IDs, replay versus live-style parity, matching MM + directional family outputs and batch validation fail-closed.
 - [x] Public exports, [strategy guide](../../alpha/STRATEGIES.md), ADR-016/017 and handoff documentation.
 - [x] **First code-head CI** ([Hyperliquid full-suite #42597417136](https://github.com/kyle-nguyennn/market-maker/actions/runs/42597417136)): **388 passed, 2 skipped** in default and PAS configurations; PAS read-only succeeded. [Alpaca SDK #42597417402](https://github.com/kyle-nguyennn/market-maker/actions/runs/42597417402): **17 passed**. No network trading actions.
-- [ ] Confirm latest PR #17 HEAD CI after documentation updates, review before merge.
+- [x] PR #17 squash-merged into main at user request, merge commit `5bf9fb77fec846ca92e8b92e72c1928b18a247f0`. Full CI green, no trading API calls.
 - [ ] Next: session-aware equity data, walk-forward alpha/cost/turnover evaluation and fixed baselines. Only after that, a regime-aware selector and execution mapping.
 
 **Scope note:** `model_score` is a fixed model score, **not** an estimated win probability. `StrategyEngine` is an evaluator, **not** an execution scheduler or portfolio optimiser. `AlphaPipeline` still runs one selected Strategy; batched evaluation is explicit through `StrategyEngine.evaluate`.
+
+## P3-A causal offline bar backtester (draft PR #18)
+
+- [x] `backtest/engine.py`: single-symbol, read-only `CausalBarBacktester` using the **exact** existing `AlphaPipeline.on_bar` / `Strategy.decide` data interfaces, not a second strategy implementation. `BacktestConfig` declares initial cash, latency, order TTL, fee/slippage bps, fractional quantity step, gross weight limit and rebalance threshold.
+- [x] **Globally ordered bar events:** separate bar OPEN (hypothetical fill, observed opening mark) from bar PUBLICATION (complete OHLCV features, strategy and equity mark). OPEN precedes PUBLICATION at ties. Do **not** process one full bar at a time: the later bar's open may occur before an earlier completed bar is published, so a later signal must not retroactively cancel a prior fill. At publication use freshest observable market open/close as equity mark, never a future close.
+- [x] Signed cash/position and average-entry cost ledger; simulated fills with signal lineage, realized/unrealized price P&L, fees, adverse slippage, equity points, drawdown, turnover and exploratory DST-aware daily Sharpe. Reject maker quote decisions rather than fabricating fill probabilities from OHLCV.
+- [x] `apps/backtest_alpha.py` reads versioned local CSV or optional historical Alpaca bars (read-only when user invokes) into the **same** pipeline. Supports cash/no-trade control plus momentum/reversion, emits structured JSON and optional equity/fills CSV exports.
+- [x] `tests/test_alpha_causal_backtest.py` includes no-lookahead fill timings, retroactive cancellation regression, future-close mutation invariance vs observable next-open pricing, costs/positions/long-to-short average-cost ledger, order expiry, target validation and maker quote rejection. `tests/test_alpha_backtest_cli.py` checks deterministic local CSV end-to-end, reports and no-trade control.
+- [x] Document fill assumptions in `backtest/README.md`, enforce `backtest/AGENTS.md` invariants and record ADR-018.
+- [x] **Latest pre-documentation CI:** [CI #42601770282](https://github.com/kyle-nguyennn/market-maker/actions/runs/42601770282), **424 passed, 2 skipped** in default and PAS modes, scored PAS read-only success; no authenticated trading actions. The extra test verifies that every strategy receives the current simulated `PortfolioSnapshot` via the unchanged `StrategyContext`.
+- [ ] Verify latest PR #18 head checks following ADR/docs updates; leave it as a draft for review/merge when authorized.
+- [ ] P2-B equity-session handling, true historical publication/revision archival and realistic no-trade-minute policy. Current FeatureEngine requires contiguous minute bars and resets after any gap.
+- [ ] P3-B walk-forward study comparing fixed policy vs cash/buy-and-hold/ensemble on **matched** data with frozen parameters. Static slippage and next eligible bar-open fills are scenarios, not verified actual executions.
+
+**Interpretation:** The first P3 engine is a **hypothetical** single-asset execution simulator. The open-fill rule assumes an order ready by a future bar opening can execute at that recorded opening, plus adverse bps. It does not reproduce bid/ask spread, liquidity, partial fills, borrow, dividends, fees that differ by venue, or queue position. `AlphaSignal.confidence` is not an estimated win probability. Offline backtest results are not proofs of tradability or profitability.
 
 ## Test command
 
