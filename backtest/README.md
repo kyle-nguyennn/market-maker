@@ -26,7 +26,9 @@ actually become available.
    proportional fee and quantity-step rounding. No current/future OHLCV
    close is used for signal generation at this event.
 2. **Bar-publication event:** Only at the bar's declared
-   `available_at_ms`, mark holdings at the completed close and publish
+   `available_at_ms`, mark holdings at the freshest market price already
+   observable (latest open or published close, by underlying market time)
+   and publish
    the normalized bar to `AlphaPipeline.on_bar`, potentially emitting a
    new `TargetExposure`.
 3. **Schedule future exposure:** A decision may affect only *subsequent*
@@ -101,8 +103,10 @@ The command prints JSON metrics, including `net_pnl`, `net_return`,
 `turnover_initial_equity`, `daily_sharpe` (when estimable),
 `realized_price_pnl` and `unrealized_price_pnl`. Optional files:
 
-- `equity.csv`: cash, signed position quantity, mark price and portfolio
-  equity at each historical bar's publication.
+- `equity.csv`: cash, signed position quantity, bar close, latest
+  observed `mark_price`, and portfolio equity at each historical bar's
+  publication. A next-minute opening may precede the prior bar's
+  publication, so the latest observable mark can differ from its close.
 - `fills.csv`: exact source decision ID and signal IDs, decision/eligible/
   actual simulated fill timestamps, signed quantity, fill/open price, fees,
   slippage and realized price P&L.
@@ -152,11 +156,12 @@ IEX is not consolidated SIP; differences in venue coverage matter.
   adverse fill slippage and charged proportional fees.
 - `realized_price_pnl` is the signed average-cost gain/loss realized by
   reductions/closures **before explicit fees**; `unrealized_price_pnl`
-  is the marked gain/loss on the remaining position. Slippage is already
-  included via the executed fill prices.
+  is the marked gain/loss on the remaining position using the most recent
+  observable market price. Slippage is already included via executed
+  fill prices.
 - `turnover_initial_equity` is total **absolute executed notional**
   divided by initial equity; it is not an annualized turnover statistic.
-- `max_drawdown` uses marked equity at available bar closes and the
+- `max_drawdown` uses marked equity at bar-publication events and the
   initial equity as its starting peak.
 - `daily_sharpe` uses end-of-day marked equity grouped by
   `America/New_York` calendar date, sample standard deviation and
