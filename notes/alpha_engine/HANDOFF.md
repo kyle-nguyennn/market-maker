@@ -1,35 +1,36 @@
 # Next-agent handoff — shared alpha engine
 
-**Date:** 2026-11-09; **active P1 branch:** `feat/shared-alpha-domain-p1`; **base:** `main`.
+**Date:** 2026-11-09; **active P2-A branch:** `feat/alpha-p2-point-in-time-features`; **base:** `main` containing merged P1 [PR #15](https://github.com/kyle-nguyennn/market-maker/pull/15).
 
 ## First five minutes
 
-1. Read [README](./README.md), [DESIGN_DECISIONS](./DESIGN_DECISIONS.md), [IMPLEMENTATION_LOG](./IMPLEMENTATION_LOG.md), and `exchanges/alpharena/NOTES.md`.
-2. Inspect `model/AGENTS.md`, `alpha/domain.py`, `alpha/strategy.py`, `tests/test_alpha_domain.py` and `quoter/base_quoter.py`.
-3. Check the latest P1 PR status and head SHA, then run offline alpha tests and the full repository suite. Do not assume earlier passes cover later commits.
-4. Preserve immutable Decimal domain invariants and existing market-making functionality.
-5. Update log and ADRs with actual changes, test runs, blocked assumptions and link to the next PR.
+1. Read [README](./README.md), [DESIGN_DECISIONS](./DESIGN_DECISIONS.md), [IMPLEMENTATION_LOG](./IMPLEMENTATION_LOG.md) and `exchanges/alpharena/NOTES.md`.
+2. Inspect `model/AGENTS.md`, `alpha/domain.py`, `alpha/market_data.py`, `alpha/features.py`, `alpha/strategy.py`, `tests/test_alpha_features.py` and existing order/quote adapters (do not modify them for P2-A).
+3. Get the latest P2-A PR number/head SHA and check GitHub Actions. Test the latest commit; do not reuse earlier successful check results for newer commits.
+4. Keep prices/features finite `Decimal`, snapshots immutable, and code free of venue SDKs and submission paths. Preserve P1 exports.
+5. Append or revise the implementation log with actual CI links, known failures and next-agent instructions. Add ADRs for changed decisions.
 
-## P1 acceptance
+## Current P2-A work
 
-- All domain types import without AlphArena/SHIFT/SDK/HTTP dependencies.
-- Every continuous feature and trading input is finite Decimal, preserving tiny values.
-- A feature is not usable before its availability timestamp; a forecast cannot predate input feature availability.
-- Distinguish a signed expected return from a signed equity weight; no venue weights/caps checked in domain layer.
-- Feature snapshots defensively copy data; no mutation of recorded inputs.
-- Strategies are pure and may abstain. No invocation of SDKs, orders, or live sandbox requests.
-- Existing test suites pass under normal and `PERPETUAL_ALPHA_DEX=pas` configurations.
+- New immutable OHLCV bar type separates completed-bar end from actual first-publication time.
+- Strict CSV ingestion uses user-specified source (dataset revision) and time interval; no guessed timezone/corporate-action adjustment.
+- Pure `build_price_features(..., decision_at_ms=..., config=...)` filters *as-of-available* bars and emits a P1 `FeatureSnapshot`.
+- Features are one-period simple return, multi-bar momentum, per-bar realized volatility, and close z-score. Fixed 34-digit Decimal context; SHA-256 snapshot identity over consumed historical data and config.
+- Validates no duplicate bar ends, no gaps inside the lookback, no stale latest bar, no mixed source/interval. Future data does not influence features or snapshot ID.
+- Tests cover near-future observations, late publications, duplicate revisions, strict CSV values, config validation, caller Decimal context and immutable models.
 
-## Recommended P2 starting slice (future PR only)
+## Priority follow-ups
 
-Implement a **reproducible feature construction adapter for offline price bars** with an injected clock/data source, explicit as-of timestamp, latency/availability, missing-data handling, model/feature versioning and a no-lookahead fixture. Then implement a simple fixed baseline trend strategy that emits `AlphaSignal`. Do not start from a leaderboard-driven RL optimizer or a live bot. Add walks and cost modeling in distinct reviewed increments.
+1. Validate P2-A latest-head CI, fix test failures, review and merge when approved. Nothing in P2-A submits signals or trades.
+2. **P2-B: build a market-session-aware historical data normalizer.** Strict `interval_ms` contiguity in P2-A rejects overnight/weekend/holiday gaps in real equity price bars. Choose an exchange calendar/timezone, explicit corporate-action adjustment semantics, point-in-time vendor revision rules and missing-bar policy. Add adversarial market session tests before treating AlphArena equities as credible historical research input.
+3. Build a documented fixed-rule trend baseline against `AlphaStrategy`, with an explicit, calibratable mapping from historical momentum to a signed *forecast* and a known forecast horizon. Do not equate trailing return with predicted return without justification.
+4. Then add fixed momentum/reversion, static ensemble, regime selector, and cost-aware walk-forward evaluation with exact same observation set, leakage restrictions and turnover accounting.
 
-## Known caveats
+## Acceptance and guardrails
 
-- `TargetExposure` does **not** ensure actual capacity or access to trades; downstream risk/portfolio layers must enforce policy.
-- The `AlphaStrategy` Protocol is structural, not a runtime guarantee of purity or lineage consistency.
-- Converting a TargetExposure to an AlphArena trade can require opening/closing *discrete positions*, not exact continuous rebalancing.
-- `FeatureSnapshot.values` uses read-only mapping proxy; serializers must implement a deliberate Decimal-preserving codec.
-- SHIFT needs event-level and order-book data to test 15-tick signals, liquidity and queue effects; AlphArena cannot supply that evidence.
-
-**Safety:** Do not dispatch or sign real/simulated trading operations without explicit authorization. CI may run read-only tests but must not be used to submit trades.
+- No future information, including historical revisions with `available_at_ms` after the decision, may affect a past feature.
+- Never silently extrapolate, backfill, join incompatible time intervals or align unadjusted with adjusted price series.
+- Reproducible inputs must include dataset version, observation/availability timestamps, feature config, and deterministic ID. Keep data-provider source code separate from feature computation.
+- `PriceBar` and `FeatureSnapshot` are not executable intents. Risk, portfolio and venue execution remain independent.
+- AlphArena is a low-frequency **position API**, not an order-book market maker; SHIFT is the order-level execution validation venue.
+- No actual credentialed API calls or trade submissions in these PRs. CI can perform repository's existing read-only jobs but may not authorize trading.
