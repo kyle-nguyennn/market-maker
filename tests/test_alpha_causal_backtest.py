@@ -168,14 +168,37 @@ def test_identical_pending_target_does_not_reset_latency_and_starve_fill():
     assert result.fills[0].filled_at_ms == 7 * MINUTE
 
 
-def test_future_bar_mutation_cannot_affect_historical_past_fill():
+def test_unpublished_future_close_cannot_affect_historical_snapshots():
     original = bars()
-    changed = original[:6] + bars(["900", "901"], start_i=7)
+    # Change only bar7 *close*. Its opening at 360000 is already observed
+    # before bar6 publication at 361000, but its close remains unavailable
+    # until 421000. Earlier snapshots and marks must be invariant.
+    changed = original[:6] + (
+        replace(original[6], high=D("900"), close=D("900")),
+    ) + original[7:]
     before = run(original)
     after = run(changed)
     assert before.fills[0] == after.fills[0]
     assert before.equity_curve[:6] == after.equity_curve[:6]
     assert before.signals_and_decisions[:3] == after.signals_and_decisions[:3]
+
+
+def test_publication_mark_uses_later_observed_open_not_stale_close():
+    observations = bars()
+    # bar7 opens at 360000 but bar6 close publishes at 361000.
+    # At 361000 the actual bar7 open is a fresher observed price than
+    # bar6 close; using bar6 close would regress the equity mark.
+    changed = observations[:6] + (
+        replace(observations[6], open=D("900"), high=D("900"),
+                low=D("107"), close=D("900")),
+    ) + observations[7:]
+    base = run(observations)
+    changed_run = run(changed)
+    assert base.equity_curve[5].close_price == D("106")
+    assert changed_run.equity_curve[5].close_price == D("106")
+    assert base.equity_curve[5].mark_price == D("107")
+    assert changed_run.equity_curve[5].mark_price == D("900")
+    assert base.equity_curve[5].equity != changed_run.equity_curve[5].equity
 
 
 def test_target_rejects_leverage_above_explicit_cap():
