@@ -97,6 +97,7 @@ class BacktestMetrics:
     traded_notional: Decimal
     turnover_initial_equity: Decimal
     realized_price_pnl: Decimal
+    unrealized_price_pnl: Decimal
     fills: int
     generated_decisions: int
     daily_sharpe: Decimal | None
@@ -332,6 +333,9 @@ class CausalBarBacktester:
                 fees=self._fees, slippage=self._slippage,
                 traded_notional=self._traded_notional,
                 realized_price_pnl=self._realized_price_pnl,
+                unrealized_price_pnl=(
+                    self._quantity * (self._curve[-1].close_price - self._average_entry)
+                ),
                 decision_count=len(self._decisions),
             )
             return BacktestResult(
@@ -350,7 +354,8 @@ def _metrics(
     *, config: BacktestConfig, points: Sequence[EquityPoint],
     fills: Sequence[SimulatedFill], fees: Decimal,
     slippage: Decimal, traded_notional: Decimal,
-    realized_price_pnl: Decimal, decision_count: int,
+    realized_price_pnl: Decimal, unrealized_price_pnl: Decimal,
+    decision_count: int,
 ) -> BacktestMetrics:
     with localcontext(_CONTEXT):
         initial = config.initial_cash
@@ -392,6 +397,7 @@ def _metrics(
             traded_notional=traded_notional,
             turnover_initial_equity=traded_notional / initial,
             realized_price_pnl=realized_price_pnl,
+            unrealized_price_pnl=unrealized_price_pnl,
             fills=len(fills), generated_decisions=decision_count,
             daily_sharpe=sharpe,
         )
