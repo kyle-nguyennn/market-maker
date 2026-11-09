@@ -7,7 +7,7 @@ from __future__ import annotations
 from decimal import Context, Decimal, ROUND_HALF_EVEN, localcontext
 from typing import Mapping, Protocol, Sequence
 
-from .market_data import PriceBar
+from .observations import PriceBar
 
 
 class FeatureCalculator(Protocol):
