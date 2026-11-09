@@ -134,6 +134,7 @@ def test_fixed_decimal_precision_even_if_caller_changes_global_context():
     first = build(bars)
     with localcontext() as ctx:
         ctx.prec = 6
+        ctx.rounding = "ROUND_DOWN"
         second = build(bars)
     assert second.snapshot_id == first.snapshot_id
     assert second.values == first.values
