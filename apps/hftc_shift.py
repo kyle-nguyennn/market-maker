@@ -144,11 +144,16 @@ def _flatten(client: ShiftVenueClient, symbol: str) -> None:
     if order_id is None:
         return
     _await_order(client, order_id)
-    # No second market order: a partial fill may still be in flight.
+    # Portfolio updates may lag an execution update. Poll; never blindly resubmit.
     remaining = client.position_shares(symbol)
+    end = time.monotonic() + 10
+    while remaining != 0 and time.monotonic() < end:
+        time.sleep(0.2)
+        remaining = client.position_shares(symbol)
     if remaining:
         raise RuntimeError(
-            f"Unflattened {symbol} position: {remaining} shares; manual reconciliation needed"
+            f"Unflattened/unreconciled {symbol} position: {remaining} shares; "
+            "manual reconciliation needed"
         )
 
 
