@@ -57,6 +57,35 @@ PriceBar (live or replay) -> FeatureEngine.on_bar
 - The [AlphArena paper trading API](https://alpharena.io/docs) exposes trade/portfolio/performance operations and marks stock fills internally. No documented public OHLCV stream was identified. Do **not** create a hypothetical `AlphArenaMarketDataHandler` for unsupported endpoints; choose an independent equities feed, with explicit bar availability and corporate-action/session normalization.
 - `tests/test_market_data_boundary.py` exercises the new module ownership and replay/live parity. Ensure PR #16 latest CI passes after this change.
 
+## Official Alpaca SDK host-side integration (ADR-015)
+
+- `market_handler/alpaca_stock_market_data.py` contains two adapters:
+  `AlpacaHistoricalBarProvider` (historical minute BarSet → PriceBar,
+  explicit assumed publication lag) and `AlpacaMinuteBarStream` (SDK
+  `StockDataStream.subscribe_bars` async callbacks → PriceBar with actual
+  callback receipt time). SDK is optional via `requirements/alpaca.txt`
+  pinned to `alpaca-py==0.45.0`; `alpha/` imports none of it.
+- Normalize SDK `Bar.timestamp` (opening timestamp) to completed
+  `PriceBar.end_ms` by adding 60_000 ms. Historical endpoints cannot supply
+  real first-publication timestamps or revision logs; an explicitly assumed
+  `assumed_publication_lag_ms` and source/version identity are mandatory.
+- SDK Bar OHLCV properties are normally floats. `Decimal(str(value))`
+  preserves the SDK value text but cannot recreate precision lost before
+  conversion. Do not use this path as an L2/tick-precision source.
+- `market_handler/ALPACA.md` has offline/historical/live usage examples.
+  No credentials or API calls in tests; live `run()` must be explicitly
+  invoked and is blocking. Updated-bar corrections and market calendars,
+  reconnect and persisted replay remain future work.
+- `tests/test_alpaca_market_data.py` uses mocked historical/stream clients;
+  `.github/workflows/alpaca-market-data-tests.yml` installs the real SDK
+  for constructor/request-model compatibility (no network/API keys).
+- First pinned SDK run #42595183411 caught a real import error:
+  `Sort` is in `alpaca.common.enums`. Fixed. Check latest SDK workflow,
+  full Hyperliquid suite, and record exact results before merging.
+- AlpArena does not supply a documented public equities OHLCV feed; use this
+  Alpaca data adapter for its independent features, while preserving the
+  separate paper-position AlpArena execution API.
+
 ## Priority follow-ups
 
 1. Validate P2-A latest-head CI, fix test failures, review and merge when approved. CI run #42579976084 passed 338 tests twice on the engine-refactor code commit; verify newer documentation commits separately. Nothing in P2-A submits signals or trades.
