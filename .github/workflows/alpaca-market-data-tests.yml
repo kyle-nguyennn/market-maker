@@ -1,0 +1,40 @@
+name: Alpaca market-data SDK offline contracts
+
+on:
+  pull_request:
+    paths:
+      - "alpha/**"
+      - "market_handler/alpaca_stock_market_data.py"
+      - "market_handler/historical_bar_reader.py"
+      - "requirements/alpaca.txt"
+      - "requirements/common.txt"
+      - "tests/test_alpaca_market_data.py"
+      - "tests/test_market_data_boundary.py"
+      - ".github/workflows/alpaca-market-data-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "alpha/**"
+      - "market_handler/alpaca_stock_market_data.py"
+      - "requirements/alpaca.txt"
+      - "tests/test_alpaca_market_data.py"
+      - ".github/workflows/alpaca-market-data-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  alpaca-sdk-offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements/alpaca.txt
+      - name: Install official Alpaca market-data SDK
+        run: python -m pip install -r requirements/alpaca.txt
+      - name: Validate imports and source-only contracts (no network or keys)
+        run: python -m pytest -q tests/test_alpaca_market_data.py tests/test_market_data_boundary.py

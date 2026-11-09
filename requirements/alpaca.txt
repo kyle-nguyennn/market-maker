@@ -1,0 +1,5 @@
+# Optional Alpaca US-equities market-data integration (no trading calls).
+# alpaca-py 0.45.0 published 2026-11-05. Keep isolated from the core alpha
+# library and the Hyperliquid-only runtime.
+-r common.txt
+alpaca-py==0.45.0

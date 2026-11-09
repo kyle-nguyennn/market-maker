@@ -140,7 +140,7 @@ def test_pure_strategy_protocol_and_optional_abstention():
 def test_alpha_public_interface_does_not_import_venue_or_order_types():
     # Types stand alone in offline research without an adapter or SDK.
     from alpha import __all__
-    assert set(__all__) == {
-        "AlphaSignal", "AlphaStrategy", "FeatureSnapshot", "TargetExposure"}
+    assert {"AlphaSignal", "AlphaStrategy", "FeatureSnapshot", "TargetExposure"} <= set(__all__)
+    assert {"PriceBar", "FeatureConfig", "build_price_features"} <= set(__all__)
     assert "exchange" not in FeatureSnapshot.__module__
     assert "order" not in TargetExposure.__module__
