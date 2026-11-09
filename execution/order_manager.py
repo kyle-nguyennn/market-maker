@@ -35,7 +35,7 @@ class ReconciliationError(RuntimeError):
 @dataclass
 class LiveOrder:
     client_order_id: str
-    exchange_order_id: int | None
+    exchange_order_id: int | str | None
     instrument: str
     side: Side
     price: Decimal

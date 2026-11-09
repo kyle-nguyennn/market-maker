@@ -43,7 +43,7 @@ class ExecutionReport:
     """Venue-independent result of one order operation."""
 
     status: ExecutionStatus
-    exchange_order_id: int | None = None
+    exchange_order_id: int | str | None = None
     filled_size: Decimal | None = None
     average_price: Decimal | None = None
     error: str | None = None
@@ -70,7 +70,7 @@ class OrderEventType(str, Enum):
 class OrderEvent:
     client_order_id: str
     kind: OrderEventType
-    exchange_order_id: int | None = None
+    exchange_order_id: int | str | None = None
     cumulative_filled_size: Decimal | None = None
     instrument: str | None = None
     dex: str | None = None
@@ -91,7 +91,7 @@ class CancelAction:
 
     instrument: str
     client_order_id: str
-    exchange_order_id: int | None = None
+    exchange_order_id: int | str | None = None
 
 
 OrderAction = PlaceAction | CancelAction
