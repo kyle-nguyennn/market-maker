@@ -52,7 +52,7 @@ def test_exact_features_and_timestamp_provenance():
     assert snap.observed_at_ms == 4000
     assert snap.available_at_ms == 4020
     assert snap.lookback_ms == 3000
-    assert snap.values["return_1"] == D(103) / D(102) - 1
+    assert snap.values["return_1"] == D("0.009803921568627450980392156862745")  # 34-digit context
     assert snap.values["momentum"] == D("0.03")
     assert snap.values["realized_vol"] > D("0")
     assert snap.values["price_zscore"] > D("0")
