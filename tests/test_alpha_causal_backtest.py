@@ -250,3 +250,29 @@ def test_strategy_engine_module_independent_of_network_and_sdk():
         "from execution", "from market_handler",
     ):
         assert prohibited not in src
+
+
+def test_average_cost_realized_pnl_and_short_cover_when_position_flips():
+    sim = CausalBarBacktester(pipeline=pipeline(), config=BacktestConfig())
+    assert sim._apply_position(D("2"), D("100")) == 0
+    assert sim._apply_position(D("2"), D("110")) == 0
+    assert sim._quantity == D("4") and sim._average_entry == D("105")
+    assert sim._apply_position(D("-1"), D("115")) == D("10")
+    assert sim._quantity == D("3") and sim._average_entry == D("105")
+    assert sim._apply_position(D("-5"), D("120")) == D("45")
+    assert sim._quantity == D("-2") and sim._average_entry == D("120")
+    assert sim._apply_position(D("2"), D("115")) == D("10")
+    assert sim._quantity == 0 and sim._average_entry == 0
+    assert sim._realized_price_pnl == D("65")
+
+
+def test_net_pnl_reconciles_realized_unrealized_and_fees():
+    for strategy in ("momentum", "reversion"):
+        r = run(bars()[:7], side=strategy)
+        m = r.metrics
+        assert (
+            m.net_pnl ==
+            m.realized_price_pnl + m.unrealized_price_pnl - m.total_fees
+        )
+        assert m.total_slippage_cost >= 0
+        assert m.net_return == m.net_pnl / m.initial_equity
