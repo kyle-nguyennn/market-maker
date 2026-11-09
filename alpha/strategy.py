@@ -19,8 +19,8 @@ from .domain import (
 
 
 @runtime_checkable
-class SignalModel(Protocol):
-    """Pure forecast model. Existing P1 AlphaStrategy maps to this role."""
+class AlphaStrategy(Protocol):
+    """Legacy P1 prediction interface, preserved for existing callers."""
 
     @property
     def strategy_id(self) -> str:
@@ -30,8 +30,18 @@ class SignalModel(Protocol):
         ...
 
 
-# Backwards compatibility for P1 users; future predictors should say SignalModel.
-AlphaStrategy = SignalModel
+@runtime_checkable
+class SignalModel(Protocol):
+    """A clock-injected forecasting model used by SignalEngine."""
+
+    @property
+    def strategy_id(self) -> str:
+        ...
+
+    def predict(
+        self, snapshot: FeatureSnapshot, *, generated_at_ms: int,
+    ) -> AlphaSignal | None:
+        ...
 
 
 class MarketView(Protocol):
