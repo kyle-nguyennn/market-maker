@@ -124,7 +124,8 @@ def _stock_bars_request(
     symbol: str, start_ms: int, end_ms: int, *, feed: str, adjustment: str,
 ) -> Any:
     try:
-        from alpaca.data.enums import Adjustment, DataFeed, Sort
+        from alpaca.common.enums import Sort
+        from alpaca.data.enums import Adjustment, DataFeed
         from alpaca.data.requests import StockBarsRequest
         from alpaca.data.timeframe import TimeFrame
     except ImportError as exc:
