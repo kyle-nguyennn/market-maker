@@ -81,6 +81,7 @@ class EquityPoint:
     as_of_ms: int
     bar_end_ms: int
     close_price: Decimal
+    mark_price: Decimal
     cash: Decimal
     position_quantity: Decimal
     equity: Decimal
@@ -143,6 +144,8 @@ class CausalBarBacktester:
         self._quantity = _ZERO
         self._average_entry = _ZERO
         self._realized_price_pnl = _ZERO
+        self._latest_mark_price: Decimal | None = None
+        self._latest_mark_event_ms: int | None = None
         self._fees = _ZERO
         self._slippage = _ZERO
         self._traded_notional = _ZERO
@@ -183,10 +186,15 @@ class CausalBarBacktester:
         return realized
 
     def _process_bar_open(self, bar: PriceBar) -> None:
+        open_ms = bar.end_ms - bar.interval_ms
+        # A completed history record reveals the opening price during the
+        # offline run. Its OPEN is only observable at this event, not when
+        # earlier bars generate signals. Retain it as the freshest mark.
+        self._latest_mark_price = bar.open
+        self._latest_mark_event_ms = open_ms
         pending = self._pending
         if pending is None:
             return
-        open_ms = bar.end_ms - bar.interval_ms
         if open_ms > pending.expires_at_ms:
             self._pending = None
             self._expired += 1
@@ -326,9 +334,16 @@ class CausalBarBacktester:
                 if kind == 0:
                     self._process_bar_open(bar)
                     continue
-                # Only now is the close known, so signals computed from
-                # this bar cannot influence its own or past bar opens.
-                equity = self._mark(bar.close)
+                # Only now is the completed close known. Its market
+                # timestamp is bar.end_ms, which can be OLDER than a
+                # next-minute OPEN already observed before this delayed
+                # publication. Do not regress to a stale mark.
+                if (self._latest_mark_event_ms is None
+                        or bar.end_ms > self._latest_mark_event_ms):
+                    self._latest_mark_price = bar.close
+                    self._latest_mark_event_ms = bar.end_ms
+                assert self._latest_mark_price is not None
+                equity = self._mark(self._latest_mark_price)
                 if equity <= 0:
                     raise ValueError("nonpositive account equity after mark-to-market")
                 result = self.pipeline.on_bar(bar, at_ms=event_ms)
@@ -339,6 +354,7 @@ class CausalBarBacktester:
                     as_of_ms=event_ms,
                     bar_end_ms=bar.end_ms,
                     close_price=bar.close,
+                    mark_price=self._latest_mark_price,
                     cash=self._cash,
                     position_quantity=self._quantity,
                     equity=equity,
@@ -351,7 +367,7 @@ class CausalBarBacktester:
                 traded_notional=self._traded_notional,
                 realized_price_pnl=self._realized_price_pnl,
                 unrealized_price_pnl=(
-                    self._quantity * (self._curve[-1].close_price - self._average_entry)
+                    self._quantity * (self._curve[-1].mark_price - self._average_entry)
                 ),
                 decision_count=len(self._decisions),
             )
