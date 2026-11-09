@@ -90,8 +90,11 @@ def read_price_bars_csv(
             raise ValueError("unexpected CSV header; exact OHLCV schema required")
         for row_number, row in enumerate(reader, start=2):
             try:
-                if any(value is None or value.strip() == "" for value in row.values()):
-                    raise ValueError("missing CSV field")
+                if None in row or any(
+                    not isinstance(value, str) or not value.strip()
+                    for value in row.values()
+                ):
+                    raise ValueError("missing or extra CSV field")
                 bars.append(PriceBar(
                     symbol=row["symbol"],
                     end_ms=int(row["end_ms"]),
