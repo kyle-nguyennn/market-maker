@@ -23,6 +23,7 @@ from zoneinfo import ZoneInfo
 from alpha.domain import TargetExposure, _decimal, _horizon, _timestamp
 from alpha.observations import PriceBar
 from alpha.pipeline import AlphaPipeline, PipelineResult
+from alpha.strategy import PortfolioSnapshot
 
 _BPS = Decimal("10000")
 _ZERO = Decimal("0")
@@ -346,7 +347,13 @@ class CausalBarBacktester:
                 equity = self._mark(self._latest_mark_price)
                 if equity <= 0:
                     raise ValueError("nonpositive account equity after mark-to-market")
-                result = self.pipeline.on_bar(bar, at_ms=event_ms)
+                portfolio = PortfolioSnapshot(
+                    as_of_ms=event_ms, equity=equity,
+                    positions={symbol: self._quantity},
+                )
+                result = self.pipeline.on_bar(
+                    bar, at_ms=event_ms, portfolio=portfolio,
+                )
                 if result is not None:
                     self._decisions.append(result)
                     self._handle_decision(result)
