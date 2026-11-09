@@ -83,7 +83,7 @@ PriceBar (live or replay) -> FeatureEngine.on_bar
   `alpaca.common.enums`; `TimeFrame` must be compared by amount/unit (not
   Python object equality); and SDK stock requests normalize aware UTC
   datetimes to naive UTC values. Adapter and contract assertions corrected.
-- Verified [Alpaca SDK CI #42595645025](https://github.com/kyle-nguyennn/market-maker/actions/runs/42595645025): 16 passed; [full tests #42595645012](https://github.com/kyle-nguyennn/market-maker/actions/runs/42595645012): 353 passed, 1 skipped in both default and PAS, read-only PAS success. **New live SDK constructor smoke test added afterward**; check latest head before merging.
+- Latest implementation CI: [Alpaca SDK #42595956921](https://github.com/kyle-nguyennn/market-maker/actions/runs/42595956921), **17 passed** (real SDK request and stream constructor); [full project #42595957138](https://github.com/kyle-nguyennn/market-maker/actions/runs/42595957138), **353 passed, 2 skipped** in each of default and PAS, scored PAS read-only success. No external Alpaca request was attempted. Re-check the final documentation-only head before merge.
 - AlpArena does not supply a documented public equities OHLCV feed; use this
   Alpaca data adapter for its independent features, while preserving the
   separate paper-position AlpArena execution API.
