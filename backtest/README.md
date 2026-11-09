@@ -31,6 +31,9 @@ actually become available.
    and publish
    the normalized bar to `AlphaPipeline.on_bar`, potentially emitting a
    new `TargetExposure`.
+   The strategy also receives a current immutable `PortfolioSnapshot`
+   containing simulated marked equity and signed holdings via the SAME
+   `StrategyContext.portfolio` field used by any live producer.
 3. **Schedule future exposure:** A decision may affect only *subsequent*
    bar-open events, never one already processed. Repeated identical
    pending targets preserve their **original** eligibility and TTL.
