@@ -1,12 +1,12 @@
 # Next-agent handoff — shared alpha engine
 
-**Date:** 2026-11-09; **active P2-A branch:** `feat/alpha-p2-point-in-time-features`; **base:** `main` containing merged P1 [PR #15](https://github.com/kyle-nguyennn/market-maker/pull/15).
+**Date:** 2026-11-09; **active strategy branch:** `feat/alpha-strategy-baselines`; **base:** `main` with merged P1 [PR #15](https://github.com/kyle-nguyennn/market-maker/pull/15) and P2 [PR #16](https://github.com/kyle-nguyennn/market-maker/pull/16), squash commit `4956b350a34b1640285538a4aa8e6713352679cd`. **Current draft:** [PR #17](https://github.com/kyle-nguyennn/market-maker/pull/17).
 
 ## First five minutes
 
 1. Read [README](./README.md), [DESIGN_DECISIONS](./DESIGN_DECISIONS.md), [IMPLEMENTATION_LOG](./IMPLEMENTATION_LOG.md) and `exchanges/alpharena/NOTES.md`.
-2. Inspect `model/AGENTS.md`, `alpha/domain.py`, `alpha/observations.py`, `market_handler/historical_bar_reader.py`, `alpha/calculators.py`, `alpha/features.py`, `alpha/feature_engine.py`, `alpha/signal_engine.py`, `alpha/strategy.py`, `alpha/strategies.py`, `alpha/pipeline.py`, `quoter/alpha_strategy_adapter.py` and `tests/test_alpha_engines.py`.
-3. Get the latest P2-A PR number/head SHA and check GitHub Actions. Test the latest commit; do not reuse earlier successful check results for newer commits.
+2. Inspect `model/AGENTS.md`, `alpha/observations.py`, `alpha/calculators.py`, `alpha/features.py`, `alpha/feature_engine.py`, `alpha/signal_engine.py`, `alpha/signal_models.py`, `alpha/strategy.py`, `alpha/strategies.py`, `alpha/strategy_engine.py`, `alpha/pipeline.py`, `quoter/alpha_strategy_adapter.py`, `alpha/STRATEGIES.md` and `tests/test_alpha_strategy_baselines.py`.
+3. Get the latest [PR #17](https://github.com/kyle-nguyennn/market-maker/pull/17) head SHA and its GitHub Actions jobs. Test the latest commit; do not reuse earlier successful check results for newer commits.
 4. Keep prices/features finite `Decimal`, snapshots immutable, and code free of venue SDKs and submission paths. Preserve P1 exports.
 5. Append or revise the implementation log with actual CI links, known failures and next-agent instructions. Add ADRs for changed decisions.
 
@@ -88,12 +88,48 @@ PriceBar (live or replay) -> FeatureEngine.on_bar
   Alpaca data adapter for its independent features, while preserving the
   separate paper-position AlpArena execution API.
 
+## Strategy layer P2-C (current draft PR #17; ADR-016/017)
+
+- `alpha/signal_models.py` implements two **explicitly uncalibrated**
+  deterministic forecast hypotheses against the P2 price feature schema:
+  `MomentumSignalModel` forecasts `k * momentum` and
+  `MeanReversionSignalModel` forecasts `-k * price_zscore * realized_vol`
+  with `realized_vol` measured per bar. Required `feature_version`,
+  `model_version`, positive coefficient and `horizon_ms` are enforced;
+  `min_abs_momentum`/`min_abs_zscore` support abstention.
+- `model_score` (forwarded as `AlphaSignal.confidence`) is a **fixed
+  uncalibrated score, NOT a win probability**. Signals have deterministic
+  SHA-256 IDs referencing exact snapshot/config/time. Never claim alpha
+  profitability from these reference models without walk-forward validation.
+- `alpha/strategy_engine.py` runs registered `Strategy` classes on
+  **one** `StrategyContext`, returning a `StrategyBatch` of separate
+  `StrategyDecision` values. This allows parallel comparison of
+  `MomentumStrategy`, `MeanReversionStrategy` and the host
+  `MarketMakingStrategy` adapter. It is NOT a portfolio combiner,
+  automatic selector, risk authorizer or trading executor.
+- StrategyEngine verifies ownership, symbol, signal lineage and time.
+  Invalid market and optional max-age gates cause explicit batch abstention.
+  Portfolio/market time and freshness remain incomplete without a
+  live risk and reconciliation layer.
+- `AlphaPipeline` continues to support a **single** strategy and can
+  run the real models through identical replay/live bar paths; the batch
+  evaluator is explicitly separate for research.
+- Test file: `tests/test_alpha_strategy_baselines.py`. Initial [full CI
+  #42597417136](https://github.com/kyle-nguyennn/market-maker/actions/runs/42597417136)
+  passed **388 tests, 2 skipped** twice; [Alpaca SDK
+  #42597417402](https://github.com/kyle-nguyennn/market-maker/actions/runs/42597417402)
+  passed 17. Check latest PR head after documentation commits.
+- **Next immediate objective:** session-aware equities normalizer, followed
+  by point-in-time walk-forward comparison of fixed momentum/reversion/no-trade
+  policies with fees, turnover, slippage and benchmark. Avoid implementing
+  a regime-aware policy selector on unmeasured baselines.
+
 ## Priority follow-ups
 
-1. Validate P2-A latest-head CI, fix test failures, review and merge when approved. CI run #42579976084 passed 338 tests twice on the engine-refactor code commit; verify newer documentation commits separately. Nothing in P2-A submits signals or trades.
-2. **P2-B: build a market-session-aware historical data normalizer.** Strict `interval_ms` contiguity in P2-A rejects overnight/weekend/holiday gaps in real equity price bars. Choose an exchange calendar/timezone, explicit corporate-action adjustment semantics, point-in-time vendor revision rules and missing-bar policy. Add adversarial market session tests before treating AlphArena equities as credible historical research input.
-3. Build a documented fixed-rule trend baseline against `AlphaStrategy`, with an explicit, calibratable mapping from historical momentum to a signed *forecast* and a known forecast horizon. Do not equate trailing return with predicted return without justification.
-4. Then add fixed momentum/reversion, static ensemble, regime selector, and cost-aware walk-forward evaluation with exact same observation set, leakage restrictions and turnover accounting.
+1. Validate latest PR #17 head CI for all project suites and SDK-only offline tests; review and merge the separate strategy-baselines PR when authorized.
+2. **Session-aware equities normalization (P2-B):** current FeatureEngine requires contiguous minute bars and will rewarm across US equity session boundaries. Specify holiday/DST/split/adjustment/revision policies and validate actual Alpaca source semantics before using paper outcomes as research evidence.
+3. **Walk-forward evaluation (P3):** compare fixed momentum/reversion/no-trade (then static ensembles) over identical point-in-time data and forecast horizons, with transaction fees, position turnover, slippage and realistic execution assumptions. Never tune on the holdout.
+4. **Strategy selection:** only after P3, research regime-aware selection/portfolio composition and route authorized exposure decisions to AlphArena; separately evaluate maker fill quality and adverse selection with SHIFT.
 
 ## Acceptance and guardrails
 
