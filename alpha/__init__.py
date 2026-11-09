@@ -10,6 +10,8 @@ from .features import FeatureConfig, build_price_features
 from .observations import BarProvider, PriceBar
 from .pipeline import AlphaPipeline, PipelineResult, replay_pipeline
 from .signal_engine import SignalEngine
+from .signal_models import MomentumSignalModel, MeanReversionSignalModel
+from .strategy_engine import StrategyBatch, StrategyEngine
 from .strategies import (
     DirectionalSignalStrategy, MeanReversionStrategy, MomentumStrategy,
 )
@@ -22,9 +24,11 @@ __all__ = [
     "AlphaPipeline", "AlphaSignal", "AlphaStrategy",
     "BarProvider", "DirectionalSignalStrategy", "FeatureCalculator",
     "FeatureConfig", "FeatureEngine", "FeatureSnapshot", "MarketView",
-    "MeanReversionStrategy", "MomentumStrategy", "PipelineResult",
+    "MeanReversionSignalModel", "MeanReversionStrategy", "MomentumSignalModel",
+    "MomentumStrategy", "PipelineResult",
     "PortfolioSnapshot", "PriceBar", "PriceFeatureCalculator",
     "QuoteProposal", "SignalEngine", "SignalModel", "Strategy",
+    "StrategyBatch", "StrategyEngine",
     "StrategyContext", "StrategyDecision", "TargetExposure",
     "build_price_features", "replay_bars",
     "replay_pipeline",
