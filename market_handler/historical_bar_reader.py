@@ -10,7 +10,6 @@ import csv
 from decimal import Decimal
 from pathlib import Path
 
-from alpha.domain import _horizon, _name
 from alpha.observations import PriceBar
 
 _COLUMNS = (
@@ -29,8 +28,10 @@ def read_price_bars_csv(
     are required; there is no guessed timezone, adjustment or gap filling.
     This adapter performs ingestion; FeatureEngine owns its temporal window.
     """
-    _horizon(interval_ms, "interval_ms")
-    _name(source, "source")
+    if type(interval_ms) is not int or interval_ms <= 0:
+        raise ValueError("interval_ms must be a positive integer")
+    if not isinstance(source, str) or not source.strip() or source != source.strip():
+        raise ValueError("source must be a non-empty trimmed string")
     bars: list[PriceBar] = []
     with Path(path).open("r", newline="", encoding="utf-8-sig") as stream:
         reader = csv.DictReader(stream)
