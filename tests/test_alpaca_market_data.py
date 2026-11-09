@@ -308,7 +308,8 @@ def test_alpaca_module_is_data_only_and_does_not_import_trading_code():
 def test_official_alpaca_sdk_request_contract_if_dependency_installed():
     """SDK smoke test executes in optional CI with pinned alpaca-py installed."""
     pytest.importorskip("alpaca.data.requests")
-    from alpaca.data.enums import Adjustment, DataFeed, Sort
+    from alpaca.common.enums import Sort
+    from alpaca.data.enums import Adjustment, DataFeed
     from alpaca.data.requests import StockBarsRequest
     from alpaca.data.timeframe import TimeFrame
     start = unix_ms(BASE)
