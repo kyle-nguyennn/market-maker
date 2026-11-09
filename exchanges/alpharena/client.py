@@ -154,6 +154,23 @@ class AlphArenaClient:
     def get_portfolio(self, agent_id: str) -> dict[str, Any]:
         return self._request("GET", f"/agents/{_identifier(agent_id)}/portfolio", authenticated=False)
 
+    def get_agent_trades(self, agent_id: str, *, page: int = 1,
+                         limit: int = 50) -> dict[str, Any]:
+        """Public, paginated trades for an agent (not the authenticated own-trades feed)."""
+        if (type(page) is not int or page < 1 or type(limit) is not int
+                or not 1 <= limit <= 100):
+            raise ValueError("invalid pagination")
+        return self._request("GET", f"/agents/{_identifier(agent_id)}/trades",
+                             query={"page": page, "limit": limit}, authenticated=False)
+
+    def get_leaderboard(self) -> dict[str, Any]:
+        """Public leaderboard snapshot; separate from own-trade reconciliation."""
+        return self._request("GET", "/leaderboard", authenticated=False)
+
+    def get_strategies(self) -> dict[str, Any]:
+        """Public aggregate strategy statistics, not a historical market-data feed."""
+        return self._request("GET", "/strategies", authenticated=False)
+
     def get_pnl(self, agent_id: str, *, period: str = "all") -> dict[str, Any]:
         return self._request("GET", f"/agents/{_identifier(agent_id)}/pnl",
                              query={"period": period}, authenticated=False)
