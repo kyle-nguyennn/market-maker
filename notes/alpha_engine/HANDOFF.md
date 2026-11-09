@@ -5,7 +5,7 @@
 ## First five minutes
 
 1. Read [README](./README.md), [DESIGN_DECISIONS](./DESIGN_DECISIONS.md), [IMPLEMENTATION_LOG](./IMPLEMENTATION_LOG.md) and `exchanges/alpharena/NOTES.md`.
-2. Inspect `model/AGENTS.md`, `alpha/domain.py`, `alpha/calculators.py`, `alpha/features.py`, `alpha/feature_engine.py`, `alpha/signal_engine.py`, `alpha/strategy.py`, `alpha/strategies.py`, `alpha/pipeline.py`, `quoter/alpha_strategy_adapter.py` and `tests/test_alpha_engines.py`.
+2. Inspect `model/AGENTS.md`, `alpha/domain.py`, `alpha/observations.py`, `market_handler/historical_bar_reader.py`, `alpha/calculators.py`, `alpha/features.py`, `alpha/feature_engine.py`, `alpha/signal_engine.py`, `alpha/strategy.py`, `alpha/strategies.py`, `alpha/pipeline.py`, `quoter/alpha_strategy_adapter.py` and `tests/test_alpha_engines.py`.
 3. Get the latest P2-A PR number/head SHA and check GitHub Actions. Test the latest commit; do not reuse earlier successful check results for newer commits.
 4. Keep prices/features finite `Decimal`, snapshots immutable, and code free of venue SDKs and submission paths. Preserve P1 exports.
 5. Append or revise the implementation log with actual CI links, known failures and next-agent instructions. Add ADRs for changed decisions.
@@ -47,6 +47,15 @@ PriceBar (live or replay) -> FeatureEngine.on_bar
 - `MomentumStrategy` / `MeanReversionStrategy` currently only turn an **existing forecast** into a fixed desired weight. They are not calibrated alpha models, do not estimate returns themselves, and cannot trade. Explicit input models must be supplied to `SignalEngine`.
 - Reference `PriceFeatureCalculator` recomputes from a small bounded OHLCV window for exact reproducibility. Incremental O(1) feature updates and event-level SHIFT calculators belong to later performance/feature work.
 - The pipeline returns non-executable decisions. There is no market-data-store reader on the live hot path, no risk bypass, no broker integration, and no live trading authorization.
+
+## Market-data ownership / AlphArena clarification (ADR-014)
+
+- `alpha/observations.py` owns `PriceBar`, `BarProvider` and validation contracts, but **no data-source I/O**. `alpha/market_data.py` was removed.
+- The strict historical CSV reader moved to host `market_handler/historical_bar_reader.py`. Future external equity/crypto providers and Parquet readers belong on this host side, returning the **same** normalized `PriceBar`.
+- Historical replay and live normalized bar producers call `FeatureEngine.on_bar(bar, at_ms=...)` or `AlphaPipeline.on_bar`; no strategy-visible source distinction.
+- `market_handler/hyperliquid_market_data_handler.py` is currently a Hyperliquid L2 order-book adapter, not a general market-price feed for AlphArena equities. Its `MarketState` snapshots do not themselves contain OHLCV.
+- The [AlphArena paper trading API](https://alpharena.io/docs) exposes trade/portfolio/performance operations and marks stock fills internally. No documented public OHLCV stream was identified. Do **not** create a hypothetical `AlphArenaMarketDataHandler` for unsupported endpoints; choose an independent equities feed, with explicit bar availability and corporate-action/session normalization.
+- `tests/test_market_data_boundary.py` exercises the new module ownership and replay/live parity. Ensure PR #16 latest CI passes after this change.
 
 ## Priority follow-ups
 
