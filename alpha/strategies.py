@@ -8,10 +8,10 @@ from __future__ import annotations
 from decimal import Decimal
 
 from .domain import TargetExposure, _confidence, _decimal
-from .strategy import StrategyContext, StrategyDecision
+from .strategy import Strategy, StrategyContext, StrategyDecision
 
 
-class DirectionalSignalStrategy:
+class DirectionalSignalStrategy(Strategy):
     """Threshold-and-fixed-weight policy for one signal family.
 
     A baseline only: weights are desired portfolio exposures, never orders.
