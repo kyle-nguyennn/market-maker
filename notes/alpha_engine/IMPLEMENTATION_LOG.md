@@ -75,7 +75,8 @@
 - [x] Add `tests/test_market_data_boundary.py` for CSV→normalized bar→FeatureEngine parity, independent replay vs live-style ingestion, and package import separation.
 - [x] Confirm AlpArena is a **paper trade/portfolio API** as documented at [alpharena.io/docs](https://alpharena.io/docs). The current public API does not document an OHLCV/bar feed; use a separate equities data source in the host layer rather than inventing `AlphArenaMarketDataHandler`.
 - [x] Initial boundary-code run [#42591043583](https://github.com/kyle-nguyennn/market-maker/actions/runs/42591043583): **338 passed** under default and PAS modes before adding the boundary-specific tests.
-- [ ] Record final latest-head CI status after updating documentation and new tests; keep PR #16 draft for review.
+- [x] Boundary/refactor latest-code CI: [run #42591619167](https://github.com/kyle-nguyennn/market-maker/actions/runs/42591619167) at `2074558bec3fef057428488852f7b8b255dad6f1`, **341 passed** default and **341 passed** with `PERPETUAL_ALPHA_DEX=pas`. PAS read-only succeeded; live-testnet read-only skipped. No trading API calls.
+- [ ] Review and merge PR #16 separately when requested; documentation-only commits require their own latest-head CI confirmation.
 
 **Module ownership:** venue/live readers and historical CSV/Parquet providers belong to host `market_handler/` or source-specific adapters; only normalized observation types, FeatureEngine, SignalEngine and Strategy belong inside portable `alpha/`. The existing `market_handler/hyperliquid_market_data_handler.py` is a *different* L2 source adapter and has not been reused for AlpArena.
 
