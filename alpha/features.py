@@ -10,8 +10,9 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from decimal import Context, Decimal, ROUND_HALF_EVEN, localcontext
 from typing import Sequence
+
+from .calculators import FeatureCalculator, PriceFeatureCalculator
 
 from .domain import FeatureSnapshot, _horizon, _name, _timestamp
 from .market_data import PriceBar
@@ -71,6 +72,7 @@ def _snapshot_id(
 def build_price_features(
     bars: Sequence[PriceBar],
     *, symbol: str, decision_at_ms: int, config: FeatureConfig,
+    calculator: FeatureCalculator | None = None,
 ) -> FeatureSnapshot:
     """Build a price-feature vector as actually observable at decision_at_ms.
 
@@ -118,31 +120,9 @@ def build_price_features(
     if decision_at_ms - history[-1].end_ms > config.max_staleness_ms:
         raise ValueError("latest eligible bar is stale")
 
-    # Fixed precision makes results reproducible even if the process-local
-    # Decimal context was changed by unrelated code.
-    with localcontext(Context(prec=34, rounding=ROUND_HALF_EVEN)):
-        prices = [bar.close for bar in history]
-        unit = Decimal("1")
-        returns = [
-            prices[i] / prices[i - 1] - unit
-            for i in range(1, len(prices))
-        ]
-        n = Decimal(len(returns))
-        r_mean = sum(returns, Decimal("0")) / n
-        r_variance = sum(((r - r_mean) ** 2 for r in returns), Decimal("0")) / n
-        closes = prices[-config.lookback_bars:]
-        p_count = Decimal(len(closes))
-        p_mean = sum(closes, Decimal("0")) / p_count
-        p_variance = sum(((p - p_mean) ** 2 for p in closes), Decimal("0")) / p_count
-        values = {
-            "return_1": returns[-1],
-            "momentum": prices[-1] / prices[0] - unit,
-            "realized_vol": r_variance.sqrt(),
-            "price_zscore": (
-                (prices[-1] - p_mean) / p_variance.sqrt()
-                if p_variance != 0 else Decimal("0")
-            ),
-        }
+    # One calculator shared by offline replay and live ingestion. The engine
+    # owns the window; calculators only transform validated observations.
+    values = (calculator if calculator is not None else PriceFeatureCalculator()).calculate(history)
 
     return FeatureSnapshot(
         snapshot_id=_snapshot_id(
