@@ -9,10 +9,17 @@ normalization**, not alpha features, forecasts, or trading-policy decisions.
   feed adapter, maintains one instrument's latest validated **L2 book**
   `model.market.MarketState`. This is **not** an OHLCV bar source and is not
   an AlphArena API client.
+- `alpaca_stock_market_data.py`: optional official Alpaca stock-data SDK
+  integration; `AlpacaHistoricalBarProvider` retrieves IEX/SIP historical
+  minute bars with an explicit publication-lag assumption;
+  `AlpacaMinuteBarStream` subscribes to live completed minute bars and
+  records local UTC callback receipt time. Both normalize to the same
+  `alpha.observations.PriceBar`; neither uses an Alpaca trading API.
+  See [ALPACA.md](./ALPACA.md) for installation, examples, and limitations.
 - `historical_bar_reader.py`: strict file-based reader that returns
   `alpha.observations.PriceBar`. It handles CSV parsing and exact Decimal
   conversion; it does not perform feature calculation or infer calendar gaps.
-- Future host adapters (market-vendor historical/live equity feeds, external
+- Future host adapters (additional market-vendor historical/live equity feeds, external
   bar feeds, Parquet, tick-to-bar aggregation) should normalize into the
   **same** `alpha.observations.PriceBar` when the source is OHLCV.
 
@@ -43,7 +50,6 @@ not list historical OHLCV or a live-price stream. Do not fabricate an
 and implement its adapter here, or in a dedicated host `market_data/`
 source package if the number of adapters grows.
 
-**Not implemented here:** a generic live bar aggregator, vendor equity data
-provider, trading-calendar adjustment, reliable historical tick capture,
+**Not implemented here:** a generic multi-vendor live bar aggregator, trading-calendar adjustment, reliable historical tick capture,
 Redis history writer, or any trading-dispatch integration. Keep the hot path
 independent of Redis and preserve existing L2 handler's safety gates.
