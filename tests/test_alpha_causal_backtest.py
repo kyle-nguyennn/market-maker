@@ -8,6 +8,7 @@ from alpha import (
     AlphaPipeline, FeatureConfig, FeatureEngine, MomentumSignalModel,
     MeanReversionSignalModel, MomentumStrategy, MeanReversionStrategy,
     PriceBar, QuoteProposal, SignalEngine, Strategy, StrategyDecision,
+    TargetExposure,
 )
 from backtest import BacktestConfig, CausalBarBacktester
 
@@ -157,10 +158,14 @@ def test_stale_intent_expires_instead_of_filling_from_past():
 
 
 def test_identical_pending_target_does_not_reset_latency_and_starve_fill():
-    result = run(bars()[:7])
+    # With a 2-minute latency, publication of multiple identical signals
+    # precedes the first eligible opening. Only the *first* target's clock
+    # must govern eligibility.
+    result = run(bars(), config=BacktestConfig(latency_ms=120_000))
     assert result.fills
-    # The first intent is from bar 4, despite an identical bar 5 decision.
     assert result.fills[0].decision_at_ms == 4 * MINUTE + 1000
+    assert result.fills[0].eligible_at_ms == 6 * MINUTE + 1000
+    assert result.fills[0].filled_at_ms == 7 * MINUTE
 
 
 def test_future_bar_mutation_cannot_affect_historical_past_fill():
@@ -276,3 +281,51 @@ def test_net_pnl_reconciles_realized_unrealized_and_fees():
         )
         assert m.total_slippage_cost >= 0
         assert m.net_return == m.net_pnl / m.initial_equity
+
+
+def test_later_publication_cannot_retroactively_cancel_earlier_open_fill():
+    # Timeline:
+    # bar4 publication = 241_000; long intent becomes ready = 242_000.
+    # bar6 open        = 300_000; long intent must FILL.
+    # bar5 publication = 301_000; later short intent may only now replace it.
+    # A naive per-completed-bar loop incorrectly processes the short signal
+    # BEFORE the chronologically earlier bar6 open and suppresses the long.
+    class FlipAfterOpening(Strategy):
+        strategy_id = "momentum"
+
+        def decide(self, ctx):
+            observed = ctx.features.observed_at_ms
+            if observed not in (4 * MINUTE, 5 * MINUTE):
+                return StrategyDecision(self.strategy_id, ctx.decision_at_ms)
+            signal = ctx.signals[0]
+            weight = D("0.5") if observed == 4 * MINUTE else D("-0.5")
+            exposure = TargetExposure(
+                decision_id=f"flip:{observed}", symbol=ctx.symbol,
+                as_of_ms=ctx.decision_at_ms,
+                horizon_ms=signal.horizon_ms, target_weight=weight,
+                expected_return=signal.expected_return,
+                confidence=signal.confidence, strategy=self.strategy_id,
+                signal_ids=(signal.signal_id,),
+            )
+            return StrategyDecision(
+                self.strategy_id, ctx.decision_at_ms, exposures=(exposure,),
+            )
+
+    p = pipeline()
+    p.strategy = FlipAfterOpening()
+    result = CausalBarBacktester(
+        pipeline=p,
+        config=BacktestConfig(
+            latency_ms=1000, fee_bps=D("0"), slippage_bps=D("0"),
+        ),
+    ).run(bars()[:8])
+    assert result.fills
+    first = result.fills[0]
+    assert first.decision_id == f"flip:{4 * MINUTE}"
+    assert first.filled_at_ms == 5 * MINUTE
+    assert first.signed_quantity > 0
+    assert first.filled_at_ms < bars()[4].available_at_ms
+    assert any(
+        fill.signed_quantity < 0 and fill.decision_id == f"flip:{5 * MINUTE}"
+        for fill in result.fills[1:]
+    )
