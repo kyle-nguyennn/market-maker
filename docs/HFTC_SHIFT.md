@@ -7,6 +7,9 @@ Sources:
 - [Order API](https://github.com/hanlonlab/shift-python/wiki/Order)
 - [OrderBookEntry API](https://github.com/hanlonlab/shift-python/wiki/OrderBookEntry)
 
+For research on past winning strategies and a prioritized implementation plan, see
+[HFTC 2026 competitor lessons](HFTC_2026_COMPETITOR_LESSONS.md).
+
 ## Architecture
 
 ```text
