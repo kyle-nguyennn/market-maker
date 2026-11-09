@@ -56,7 +56,7 @@ Last updated: **2026-11-09**. P1 decisions remain authoritative; P2 additions ar
 
 **Date:** 2026-11-09. **Status:** Accepted for P2-A.
 
-**Decision:** `alpha/market_data.py` defines frozen `PriceBar` with a completed-bar `end_ms`, the earliest `available_at_ms`, UTC epoch milliseconds, fixed `interval_ms`, `source` (including the data revision identifier), exact Decimal OHLCV and an optional injected `BarProvider` Protocol. CSV ingestion requires explicit columns for both times and explicit source/interval arguments; it does not infer availability, timezones, adjusted prices or corporate actions. Bar publication before its end is invalid.
+**Decision (original P2-A, superseded for file ownership by ADR-014):** `alpha/market_data.py` defines frozen `PriceBar` with a completed-bar `end_ms`, the earliest `available_at_ms`, UTC epoch milliseconds, fixed `interval_ms`, `source` (including the data revision identifier), exact Decimal OHLCV and an optional injected `BarProvider` Protocol. CSV ingestion requires explicit columns for both times and explicit source/interval arguments; it does not infer availability, timezones, adjusted prices or corporate actions. Bar publication before its end is invalid.
 
 **Reason:** A historical last-trade timestamp is not a proof that a trading agent could have observed that bar. Publication lag, revisions, timezone conversions and corporate-action adjustment can introduce leakage. Dataset provenance must be supplied by the owner of a downloaded feed, not guessed by an exchange adapter.
 
@@ -139,3 +139,20 @@ Implement one conservative fixed-rule `AlphaStrategy` baseline against `momentum
 **Compatibility:** `quoter/alpha_strategy_adapter.py` adapts existing `BaseMMQuoter.quote(MarketState)` to `Strategy.decide(context)`, and also supports `quote_context(context)` for future alpha-aware MM quoters that consume full feature/signal/portfolio inputs. `MomentumStrategy` and `MeanReversionStrategy` are initial fixed-threshold, fixed-target-weight *policy skeletons* consuming forecasts selected by `SignalEngine`. They are not fitted predictive models and no profitability is claimed.
 
 **Next:** Define a multi-strategy regime selector/compositor, portfolio-level cross-symbol construction, market-context freshness/revisions, live feed bridge and offline transaction-cost evaluator separately. Do not make `BaseMMQuoter` inherit a strategy whose domain contract imports market-maker-specific Quote objects.
+
+
+## ADR-014 — Host owns market-data ingestion; alpha owns normalized observation contracts
+
+**Date:** 2026-11-09. **Status:** Accepted; supersedes file ownership in ADR-006 while preserving its bar and timestamp semantics.
+
+**Decision:** `alpha/market_data.py` was removed. Keep the immutable `PriceBar` and read-only `BarProvider` Protocol in `alpha/observations.py` as **input contracts only**. The concrete, strict Decimal-preserving `read_price_bars_csv` function now lives in `market_handler/historical_bar_reader.py`. All alpha calculators, `FeatureEngine`, and `AlphaPipeline` consume `PriceBar` via `alpha.observations` and have no knowledge of whether it came from CSV, external data provider, or an eventual live venue adapter.
+
+**Dependency direction:** host data sources → `alpha.observations` → `FeatureEngine` → `SignalEngine` → `Strategy`. `alpha/` must not import `market_handler/`, `model/`, `quoter/`, or any venue SDK. Keep later Parquet readers, feed subscriptions, symbol mappings, exchange/session calendar normalization, and source-specific integrity outside `alpha/`. Existing `model.MarketState` represents an L2 book, **not** an OHLCV `PriceBar`; do not silently substitute one for the other.
+
+**AlphArena decision:** `exchanges/alpharena/client.py` remains a paper-position and performance API client, **not** a market-data-source handler. The documented public `alpharena.io/api/v1` endpoints cover profiles, portfolios, trades, P&L, leaderboard, strategies and trade mutations; no documented OHLCV/bar stream was identified as of 2026-11-09. It uses market prices internally to mark/fill simulated positions, which does not imply its API exposes those prices as a research feed. For AlphArena equities, first provide a suitable independently sourced historical/live equities feed via a host-level adapter returning normalized `PriceBar`. Do **not** create an `AlphArenaMarketDataHandler` unless a real separate data endpoint is documented. Unlike order-level SHIFT simulation, AlphArena can be driven by low-frequency alpha features and account/position data.
+
+**Alternatives rejected:** `alpha/` importing concrete CSV/Redis readers, conflating Hyperliquid L2 market-data handler with an AlpArena stock feed, or implementing an imaginary venue market-data API.
+
+**Evidence:** `tests/test_market_data_boundary.py` checks identical replay/live feature behavior from host-ingested bars and guards the package-import boundary. `tests/test_alpha_features.py` continues validating CSV fidelity and as-of computation after the move.
+
+**Known follow-up:** `BarProvider` is only a source-port Protocol; this PR ships a CSV function, not a full provider implementation, async market-data bus, or source registry. Venue-neutral multi-feed subscription, equity exchange calendars and controlled historical publication lags are separate tasks.
