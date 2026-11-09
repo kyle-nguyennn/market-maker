@@ -175,3 +175,30 @@ Implement one conservative fixed-rule `AlphaStrategy` baseline against `momentum
 **Validation:** `tests/test_alpaca_market_data.py` provides network-free fake SDK historical/live parity tests and a real-import SDK request-model smoke test that runs only when `alpaca-py` is installed. A dedicated workflow installs the pinned real SDK but makes no remote/API/authenticated requests. Never treat a green mock/SDK constructor test as a proof of live source behavior or historical adjustment accuracy.
 
 **Alternatives rejected:** Treating AlpArena as a stock-data vendor without a documented market feed; mixing historical inferred availability with measured live receive timestamps; making the alpha package depend directly on Alpaca SDK or its floats; wiring the trading SDK into a market-data handler.
+
+
+## ADR-016 — Baseline SignalModels are explicit uncalibrated forecast hypotheses
+
+**Date:** 2026-11-09. **Status:** Accepted; strategy-layer PR #17 following merged PR #16.
+
+**Decision:** Add `MomentumSignalModel` and `MeanReversionSignalModel` under `alpha/signal_models.py`, keeping numerical indicators in `FeatureCalculator`, forecast hypotheses in `SignalModel.predict`, and trading-policy decisions in `Strategy.decide`. The fixed momentum baseline forecasts a signed future *fractional return* as `forecast_multiplier * trailing_momentum`. The fixed reversion baseline forecasts `-forecast_multiplier * price_zscore * realized_vol`, where `realized_vol` is a **per-bar fractional** standard deviation. These formulae are *declared research hypotheses*, **not** calibrated conditional expectations or evidence of predictive power. Forecast horizon is explicit and need not equal input lookback.
+
+Require each model's `feature_version`, `model_version`, `horizon_ms`, positive finite `forecast_multiplier` and optional minimum feature thresholds. Reject wrong feature versions, missing inputs, unobservable future features or invalid parameters; abstain when the indicator is too small or reversion volatility is zero. Fix numeric computations to a 34-digit Decimal context, hash canonical snapshot/config/model/clock/forecast data into reproducible signal IDs, and retain signal lineage to `FeatureSnapshot.snapshot_id`.
+
+**Confidence semantics:** `model_score` is presently a **fixed, uncalibrated** value in [0,1] passed to `AlphaSignal.confidence`. It is *not* a probability of a winning trade, and must not be described as such. No hidden fitting, black-box selectors, threshold optimization or test-set leakage is introduced.
+
+**Deferred:** point-in-time training labels, statistically estimated coefficients, uncertainty calibration, cross-validation, costs, regime interactions, formal significance testing and live data quality. Avoid using P2-C signal values as justification for actual trading.
+
+## ADR-017 — StrategyEngine is a research fan-out, not a multi-strategy executor
+
+**Date:** 2026-11-09. **Status:** Accepted.
+
+**Decision:** `alpha/strategy_engine.py` defines a `StrategyEngine` registry that evaluates independent `Strategy` subclasses against one `StrategyContext`. Its `StrategyBatch` contains **separately attributed** `StrategyDecision` values. It can compare momentum, mean-reversion and existing MMQuoter-wrapped market-making policies without coercing quote proposals into target exposures or implicitly combining competing trades. It is intentionally **not** a selector, capital allocator, merged portfolio, order router, or trading authorization.
+
+Enforce unique policy IDs, exact decision timestamps/strategy identity, symbol consistency, exposure ownership and membership of every output signal ID in the supplied `StrategyContext`. Quotes require an actual market view. An explicitly invalid market causes whole-batch abstention. The caller may optionally set freshness gates for feature publication, market timestamp and portfolio timestamp; exceeding one records a `skipped_reason` with an empty proposal from each registered strategy. The caller must not infer that unset gates have been validated by a risk manager.
+
+**Rationale:** Our previous architectural agreement requires one `Strategy` abstraction for both resting-order MM and directional exposure policies. Fair offline comparisons must share feature and forecast availability while keeping incompatible execution metrics distinct. A future selector should only be designed after fixed baselines and transaction-cost/fill metrics have been collected.
+
+**Trade-off:** `AlphaPipeline` remains a single-strategy feature→signal→decision composition. The research `StrategyEngine` consumes the exact same `StrategyContext` and can be used by later backtest/evaluation infrastructure. No new storage, websocket handlers, strategy-visible live/replay flags, SDK dependencies or venue dispatch in `alpha/`.
+
+**Next:** Add session-aware equity bar normalization and an executable-free walk-forward evaluator comparing fixed-strategy, no-trade and static-ensemble baselines on identical as-of data. Only then implement regime-aware switching and risk-constrained portfolio composition. MM strategies require order-book fill/adverse-selection evaluation on SHIFT rather than relying on AlphArena paper-position P&L.

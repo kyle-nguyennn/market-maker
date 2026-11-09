@@ -37,6 +37,15 @@ boundary and keep strategy execution and venue wiring outside this directory.
    market-data/corporate-action assumptions.
 9. Early algorithms are reference baselines, not statistically validated
    alphas. No claim of profitability from deterministic fixture tests.
+10. **Model/strategy separation:** new signal predictors implement
+    `SignalModel.predict`; trading policies implement `Strategy.decide`.
+    `MomentumSignalModel` / `MeanReversionSignalModel` have explicit
+    uncalibrated coefficients/horizon/feature version. Never describe
+    constant `model_score` as a win probability or train on holdout.
+11. `StrategyEngine` evaluates separate counterfactual policy families on
+    one context. Do not automatically combine its quotes/exposures or use
+    it as trade permission. Any selector/portfolio optimiser belongs to
+    separately tested research and risk layers.
 
 Before moving this package to its own repository, add pinned packaging and
 release metadata, serialization/ABI contracts, separate dependency/CI
