@@ -15,7 +15,7 @@ from typing import Sequence
 from .calculators import FeatureCalculator, PriceFeatureCalculator
 
 from .domain import FeatureSnapshot, _horizon, _name, _timestamp
-from .market_data import PriceBar
+from .observations import PriceBar
 
 
 @dataclass(frozen=True, slots=True)
