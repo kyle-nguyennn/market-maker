@@ -323,5 +323,6 @@ def test_official_alpaca_sdk_request_contract_if_dependency_installed():
     assert request.sort == Sort.ASC
     assert request.timeframe.amount == TimeFrame.Minute.amount
     assert request.timeframe.unit == TimeFrame.Minute.unit
-    assert request.start == BASE
-    assert request.end == BASE + timedelta(minutes=3)
+    # alpaca-py normalizes UTC datetimes to timezone-naive UTC in Pydantic.
+    assert request.start.replace(tzinfo=UTC) == BASE
+    assert request.end.replace(tzinfo=UTC) == BASE + timedelta(minutes=3)
