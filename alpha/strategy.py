@@ -7,6 +7,7 @@ independent of market-maker's quoter, order, execution and venue classes.
 """
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from decimal import Decimal
 from types import MappingProxyType
@@ -173,13 +174,16 @@ class StrategyDecision:
             raise ValueError("target exposure decision timestamp mismatch")
 
 
-@runtime_checkable
-class Strategy(Protocol):
-    """Trading policy contract shared by directional and market-making families."""
+class Strategy(ABC):
+    """Base trading policy family; no venue execution or order dependencies.
 
-    @property
-    def strategy_id(self) -> str:
-        ...
+    Directional and market-making strategies subclass this ABC, while
+    prediction models implement the separate SignalModel Protocol.
+    """
 
+    strategy_id: str
+
+    @abstractmethod
     def decide(self, context: StrategyContext) -> StrategyDecision:
-        ...
+        """Return desired target exposures or quote proposals (or abstain)."""
+        raise NotImplementedError
