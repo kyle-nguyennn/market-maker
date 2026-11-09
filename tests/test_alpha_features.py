@@ -5,7 +5,8 @@ from decimal import Decimal as D, localcontext
 import pytest
 
 from alpha.features import FeatureConfig, build_price_features
-from alpha.market_data import PriceBar, read_price_bars_csv
+from alpha.observations import PriceBar
+from market_handler.historical_bar_reader import read_price_bars_csv
 
 
 def bar(index, price="100", **changes):
@@ -212,6 +213,7 @@ def test_malformed_csv_fails_closed(tmp_path, contents):
 
 
 def test_build_does_not_import_any_venue_or_send_orders():
-    from alpha import features, market_data
+    from alpha import features, observations
     assert "alpharena" not in features.__dict__
-    assert not hasattr(market_data, "place_order")
+    assert not hasattr(observations, "read_price_bars_csv")
+    assert not hasattr(observations, "place_order")
