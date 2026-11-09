@@ -9,7 +9,7 @@
 | AlphArena API HTTP boundary | **Merged** — [PR #13](https://github.com/kyle-nguyennn/market-maker/pull/13) |
 | Initial architectural intent | `exchanges/alpharena/NOTES.md` on main |
 | P1 development branch | `feat/shared-alpha-domain-p1` |
-| P1 PR | Pending until opened; update when available |
+| P1 PR | **Open draft:** [PR #15](https://github.com/kyle-nguyennn/market-maker/pull/15) |
 | Live AlphArena sandbox trade test | **Not performed / not authorized** |
 
 ## P1 — Domain interfaces (this branch)
@@ -20,8 +20,8 @@
 - [x] `alpha/strategy.py`: venue-neutral `AlphaStrategy.generate_signal()` Protocol supporting abstention.
 - [x] `tests/test_alpha_domain.py`: deterministic valid/invalid, precision, immutability, abstention and no-order-contract cases.
 - [x] Document decisions and next-agent handoff under `notes/alpha_engine/`.
-- [ ] Confirm full suite in CI for P1 HEAD; record exact run link, test counts and failures here.
-- [ ] Review P1 PR and merge after checks, if requested.
+- [x] Initial P1 code validated at commit `88e0892c0aecc0765a5dc9c268e639a2bc29cebc`: [GitHub Actions run #42574503050](https://github.com/kyle-nguyennn/market-maker/actions/runs/42574503050), **287 passed** (default), **287 passed** (`PERPETUAL_ALPHA_DEX=pas`); Python syntax and read-only CI jobs passed. Subsequent documentation-only commits should get a fresh CI status before merge.
+- [ ] Review [PR #15](https://github.com/kyle-nguyennn/market-maker/pull/15), verify latest HEAD checks and merge only when reviewed/requested.
 
 **Explicit P1 non-goals:** AlpArena REST changes, venue execution, risk policy, realized P&L, strategy computation, alpha model training, live/paper position submission.
 
