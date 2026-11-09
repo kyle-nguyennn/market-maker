@@ -80,10 +80,22 @@
 
 **Module ownership:** venue/live readers and historical CSV/Parquet providers belong to host `market_handler/` or source-specific adapters; only normalized observation types, FeatureEngine, SignalEngine and Strategy belong inside portable `alpha/`. The existing `market_handler/hyperliquid_market_data_handler.py` is a *different* L2 source adapter and has not been reused for AlpArena.
 
+## P2-A Alpaca SDK host market-data integration (same PR #16)
+
+- [x] Installable optional pinned SDK: `requirements/alpaca.txt` → `alpaca-py==0.45.0` (not a dependency of `alpha/` or the existing Hyperliquid runtime).
+- [x] `market_handler/alpaca_stock_market_data.py`: `AlpacaHistoricalBarProvider` accepts an explicitly configured start, source version, IEX/SIP feed, RAW/corporate-action adjustment and **assumed** publication lag; fetches through `StockHistoricalDataClient.get_stock_bars` into `PriceBar`. Query bounds exclude incomplete/unavailable bars; bar start is shifted to completed end.
+- [x] `AlpacaMinuteBarStream` wraps SDK `StockDataStream.subscribe_bars` and records actual callback-receipt UTC milliseconds. It invokes a caller-supplied async `on_bar(PriceBar, at_ms)` and requires explicit `subscribe()`/`run()`. No SDK TradingClient or order submission.
+- [x] Strict no-network tests in `tests/test_alpaca_market_data.py`; a dedicated `.github/workflows/alpaca-market-data-tests.yml` installs the **real SDK** for request model validation.
+- [x] `market_handler/ALPACA.md` documents credentials, read-only examples, historical availability assumption, float precision loss, corrections/rewarm limits and no AlpArena fake market-data endpoint.
+- [x] ADR-015 captures integration boundary and research caveats.
+- [x] **First real SDK CI feedback:** [run #42595183411](https://github.com/kyle-nguyennn/market-maker/actions/runs/42595183411) found `Sort` belongs in `alpaca.common.enums`, **not** `alpaca.data.enums`. Corrected in adapter and smoke test; rerun pending.
+- [ ] Confirm latest offline SDK job and existing full contract suite green at final commit. No real Alpaca API calls or live websocket operations were performed.
+- [ ] Before production usage: obtain market-data access, collect a small historical fixture and measure actual time/availability, model sessions and revisions, then integrate scheduling/reconnect/backpressure and separate risk gates.
+
 ## Test command
 
 ```bash
-python -m pytest -q tests/test_alpha_domain.py tests/test_alpha_features.py tests/test_alpha_engines.py tests/test_market_data_boundary.py
+python -m pytest -q tests/test_alpha_domain.py tests/test_alpha_features.py tests/test_alpha_engines.py tests/test_market_data_boundary.py tests/test_alpaca_market_data.py
 python -m pytest -q
 PERPETUAL_ALPHA_DEX=pas python -m pytest -q
 ```
