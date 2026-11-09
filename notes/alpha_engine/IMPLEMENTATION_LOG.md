@@ -11,7 +11,7 @@
 | P1 development branch | `feat/shared-alpha-domain-p1` |
 | P1 PR | **Merged** — [PR #15](https://github.com/kyle-nguyennn/market-maker/pull/15), squash commit `7d4c774d4ebdb24ebe0e081bb99b1b072a5ea288` |
 | P2-A branch | `feat/alpha-p2-point-in-time-features` (based on post-P1 `main`) |
-| P2-A PR | **Open draft:** [PR #16](https://github.com/kyle-nguyennn/market-maker/pull/16) |
+| P2-A PR | **Merged:** [PR #16](https://github.com/kyle-nguyennn/market-maker/pull/16), squash commit `4956b350a34b1640285538a4aa8e6713352679cd` |\n| Strategy-layer PR | **Open draft:** [PR #17](https://github.com/kyle-nguyennn/market-maker/pull/17), branch `feat/alpha-strategy-baselines` |
 | Live AlphArena sandbox trade test | **Not performed / not authorized** |
 
 ## P1 — Domain interfaces (this branch)
@@ -31,7 +31,7 @@
 
 - [x] P2-A implementation on development branch: versioned immutable OHLCV `PriceBar` with observation and availability clocks, strict Decimal CSV loader, injected provider Protocol, point-in-time feature builder, configuration, SHA-256 snapshot identity and adversarial tests.
 - [x] P2-A code validated at commit `7245a401df2c42947506bf04687dc005615d3e00`: [CI run #42576909832](https://github.com/kyle-nguyennn/market-maker/actions/runs/42576909832), **324 passed** (default), **324 passed** (`PERPETUAL_ALPHA_DEX=pas`), read-only PAS job passed. Earlier run #42576707495 identified a test-only ambient Decimal-context assertion; corrected before this green run.
-- [ ] Review [PR #16](https://github.com/kyle-nguyennn/market-maker/pull/16) and verify latest HEAD checks before merge. No real market-data source or live API calls yet.
+- [x] [PR #16](https://github.com/kyle-nguyennn/market-maker/pull/16) squash-merged into `main` after final green Alpaca and default/PAS CI, merge commit `4956b350a34b1640285538a4aa8e6713352679cd`. No real Alpaca market-data requests or AlphArena trade submissions.
 - [ ] P2-B: trading-calendar-aware equity/session preprocessing, vendor-specific adjustment/revision policies and baseline fixed strategy.
 - [ ] P2: trend, momentum, mean-reversion strategies and static ensemble baseline with identical signal contract.
 - [ ] P2: regime classifier / selector with a fixed-baseline comparison; avoid hidden fitting on the test period.
@@ -76,7 +76,7 @@
 - [x] Confirm AlpArena is a **paper trade/portfolio API** as documented at [alpharena.io/docs](https://alpharena.io/docs). The current public API does not document an OHLCV/bar feed; use a separate equities data source in the host layer rather than inventing `AlphArenaMarketDataHandler`.
 - [x] Initial boundary-code run [#42591043583](https://github.com/kyle-nguyennn/market-maker/actions/runs/42591043583): **338 passed** under default and PAS modes before adding the boundary-specific tests.
 - [x] Boundary/refactor latest-code CI: [run #42591619167](https://github.com/kyle-nguyennn/market-maker/actions/runs/42591619167) at `2074558bec3fef057428488852f7b8b255dad6f1`, **341 passed** default and **341 passed** with `PERPETUAL_ALPHA_DEX=pas`. PAS read-only succeeded; live-testnet read-only skipped. No trading API calls.
-- [ ] Review and merge PR #16 separately when requested; documentation-only commits require their own latest-head CI confirmation.
+- [x] PR #16 merged at user's request; source-adapter and alpha package contracts now on `main`.
 
 **Module ownership:** venue/live readers and historical CSV/Parquet providers belong to host `market_handler/` or source-specific adapters; only normalized observation types, FeatureEngine, SignalEngine and Strategy belong inside portable `alpha/`. The existing `market_handler/hyperliquid_market_data_handler.py` is a *different* L2 source adapter and has not been reused for AlpArena.
 
@@ -94,10 +94,23 @@
 - [ ] Reconfirm latest-head checks after final documentation update; review PR #16 before merging.
 - [ ] Before production usage: obtain market-data access, collect a small historical fixture and measure actual time/availability, model sessions and revisions, then integrate scheduling/reconnect/backpressure and separate risk gates.
 
+## Strategy layer P2-C: baseline forecast models and multi-family evaluation (PR #17)
+
+- [x] `alpha/signal_models.py`: immutable `MomentumSignalModel` and `MeanReversionSignalModel` that implement `SignalModel.predict`, operate on immutable as-of feature snapshots, and preserve `model_version`, `feature_version`, forecast horizon and deterministic signal IDs. Coefficients/thresholds are explicit research hypotheses, **not fitted or calibrated**.
+- [x] `alpha/strategy_engine.py`: `StrategyEngine.evaluate(StrategyContext)` runs multiple `Strategy` subclasses on the **same** immutable context, including `MarketMakingStrategy(BaseMMQuoter)`, but returns separately attributed proposals rather than a combined executable allocation.
+- [x] Validate candidate decision identity/time/signal lineage/quote requirements. Invalid market and optional caller-selected feature/market/portfolio freshness limits cause explicit whole-batch abstention with `StrategyBatch.skipped_reason`.
+- [x] `tests/test_alpha_strategy_baselines.py` exercises positive and negative forecasts, abstention, missing/wrong features, determinism under altered Decimal context, source/version and model IDs, replay versus live-style parity, matching MM + directional family outputs and batch validation fail-closed.
+- [x] Public exports, [strategy guide](../../alpha/STRATEGIES.md), ADR-016/017 and handoff documentation.
+- [x] **First code-head CI** ([Hyperliquid full-suite #42597417136](https://github.com/kyle-nguyennn/market-maker/actions/runs/42597417136)): **388 passed, 2 skipped** in default and PAS configurations; PAS read-only succeeded. [Alpaca SDK #42597417402](https://github.com/kyle-nguyennn/market-maker/actions/runs/42597417402): **17 passed**. No network trading actions.
+- [ ] Confirm latest PR #17 HEAD CI after documentation updates, review before merge.
+- [ ] Next: session-aware equity data, walk-forward alpha/cost/turnover evaluation and fixed baselines. Only after that, a regime-aware selector and execution mapping.
+
+**Scope note:** `model_score` is a fixed model score, **not** an estimated win probability. `StrategyEngine` is an evaluator, **not** an execution scheduler or portfolio optimiser. `AlphaPipeline` still runs one selected Strategy; batched evaluation is explicit through `StrategyEngine.evaluate`.
+
 ## Test command
 
 ```bash
-python -m pytest -q tests/test_alpha_domain.py tests/test_alpha_features.py tests/test_alpha_engines.py tests/test_market_data_boundary.py tests/test_alpaca_market_data.py
+python -m pytest -q tests/test_alpha_domain.py tests/test_alpha_features.py tests/test_alpha_engines.py tests/test_market_data_boundary.py tests/test_alpaca_market_data.py tests/test_alpha_strategy_baselines.py
 python -m pytest -q
 PERPETUAL_ALPHA_DEX=pas python -m pytest -q
 ```
