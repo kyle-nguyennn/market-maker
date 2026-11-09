@@ -2,6 +2,27 @@
 
 Venue-independent market-making framework with separate exchange adapters.
 
+## Stevens HFTC / SHIFT integration
+
+The `exchanges/shift` package and `market_handler/shift_adapter.py` adapt
+the official SHIFT Python SDK to the existing Decimal-based market/order model.
+Market and order-book sizes are converted from **100-share SHIFT lots** to
+Decimal shares. The example HFTC quote runner defaults to **read-only**, and
+requires both `--trade` and `SHIFT_ALLOW_TRADING=yes` to send orders.
+
+Run offline contract tests: `python -m pytest -q tests/test_shift_adapter.py`.
+
+Inside the SHIFT-equipped competition VM, configure `SHIFT_USERNAME`,
+`SHIFT_PASSWORD`, and `SHIFT_INITIATOR_CFG`, then run:
+
+```bash
+conda activate shift
+python -m apps.hftc_shift --symbol AAPL
+```
+
+See [docs/HFTC_SHIFT.md](docs/HFTC_SHIFT.md) for setup, safety constraints,
+competition-specific scoring implications, and the remaining live validation.
+
 ## Install with Conda
 
 Run these commands **from the repository root**. The explicit `--format` for
