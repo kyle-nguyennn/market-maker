@@ -215,6 +215,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         "initial_equity": str(metrics.initial_equity),
         "final_equity": str(metrics.final_equity),
         "net_pnl": str(metrics.net_pnl),
+        "realized_price_pnl": str(metrics.realized_price_pnl),
+        "unrealized_price_pnl": str(metrics.unrealized_price_pnl),
         "net_return": str(metrics.net_return),
         "max_drawdown": str(metrics.max_drawdown),
         "total_fees": str(metrics.total_fees),
