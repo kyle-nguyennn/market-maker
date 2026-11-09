@@ -76,7 +76,7 @@ def test_price_normalization_rejects_future_early_naive_nonfinite():
             sdk_bar(open=True), source="alpaca:test",
             available_at_ms=end + 100,
         )
-    with pytest.raises(ValueError, match="not"):
+    with pytest.raises(ValueError, match="nonnegative"):
         mod.normalize_alpaca_stock_bar(
             sdk_bar(), source="alpaca:test", available_at_ms=True,
         )
