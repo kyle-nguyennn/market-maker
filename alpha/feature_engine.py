@@ -12,7 +12,7 @@ from typing import Sequence
 from .calculators import FeatureCalculator
 from .domain import FeatureSnapshot, _name, _timestamp
 from .features import FeatureConfig, build_price_features
-from .market_data import PriceBar
+from .observations import PriceBar
 
 
 class FeatureEngine:
