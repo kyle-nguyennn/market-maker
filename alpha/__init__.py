@@ -1,8 +1,14 @@
-"""Venue-neutral alpha predictions and desired portfolio exposures.
+"""Venue-independent alpha predictions, features, and portfolio targets.
 
-This package does not execute trades or implement research policies.
+Importing this package never reaches an exchange, network or trade executor.
 """
 from .domain import AlphaSignal, FeatureSnapshot, TargetExposure
+from .features import FeatureConfig, build_price_features
+from .market_data import BarProvider, PriceBar, read_price_bars_csv
 from .strategy import AlphaStrategy
 
-__all__ = ["AlphaSignal", "AlphaStrategy", "FeatureSnapshot", "TargetExposure"]
+__all__ = [
+    "AlphaSignal", "AlphaStrategy", "BarProvider",
+    "FeatureConfig", "FeatureSnapshot", "PriceBar", "TargetExposure",
+    "build_price_features", "read_price_bars_csv",
+]
