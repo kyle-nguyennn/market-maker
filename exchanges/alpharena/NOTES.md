@@ -1,6 +1,6 @@
 # AlphArena forward-testing pilot — shared alpha-engine direction
 
-Status: architectural direction agreed on 2026-11-09. This note is the implementation handoff for later work. **PR #13 remains an API-boundary-only change.**
+> **Implementation tracker (2026-11-09):** P1 is underway in [draft PR #15](https://github.com/kyle-nguyennn/market-maker/pull/15). Continue from [notes/alpha_engine/](../../notes/alpha_engine/README.md) for current milestones, design decisions and next-agent handoff. The plan below describes the overall pilot and PR #13's historical API-only scope.\n\nStatus: architectural direction agreed on 2026-11-09. This note is the implementation handoff for later work. **PR #13 remains an API-boundary-only change.**
 
 ## Goal and scope
 
