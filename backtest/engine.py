@@ -4,10 +4,11 @@ This host-side package intentionally does not import exchange SDKs, venue
 adapters, broker accounts or risk/production order managers. Strategies are
 the exact alpha.Strategy implementations used in live-style ingestion.
 
-Timing: each historical bar carries its opening timestamp, completion time
-and modeled publication time. A decision made at bar publication is NEVER
-eligible for that bar's open or an already-passed later bar open. A target is
-filled only at the first future bar OPEN satisfying decision+latency and TTL.
+Timing: each historical bar has two distinct simulation events: its opening
+and its publication. They are processed in GLOBAL EVENT-TIME ORDER, not
+one complete bar at a time. A signal can NEVER cancel an order that already
+filled at an opening earlier than its own publication. A target fills only
+at the first future bar OPEN satisfying decision+latency and TTL.
 The actual historical open price is learned during replay as a hypothetical
 execution proxy; guaranteed market-open fills are not claimed.
 """
@@ -297,29 +298,45 @@ class CausalBarBacktester:
         symbol = self.pipeline.features.symbol
         previous_end: int | None = None
         previous_publication: int | None = None
+        # Historical bar objects contain future fields, but only opening
+        # events may use the OPEN price; publication events are the FIRST
+        # point when close/features are visible. Order both globally in
+        # simulated event time to avoid retroactive order cancellation.
+        events: list[tuple[int, int, int, PriceBar]] = []
+        for index, bar in enumerate(bars):
+            if not isinstance(bar, PriceBar):
+                raise TypeError("all observations must be normalized PriceBar")
+            if bar.symbol != symbol:
+                raise ValueError("mixed symbols in single-asset backtest")
+            if previous_end is not None and bar.end_ms <= previous_end:
+                raise ValueError("bars must have strictly increasing completion times")
+            if (previous_publication is not None
+                    and bar.available_at_ms < previous_publication):
+                raise ValueError("bar publication timestamps must be monotonic")
+            previous_end = bar.end_ms
+            previous_publication = bar.available_at_ms
+            # At equal instants, an OPEN event precedes publication: no
+            # signal emitted *at* the open is granted an instant fill.
+            events.append((bar.end_ms - bar.interval_ms, 0, index, bar))
+            events.append((bar.available_at_ms, 1, index, bar))
+        events.sort(key=lambda item: (item[0], item[1], item[2]))
+
         with localcontext(_CONTEXT):
-            for bar in bars:
-                if not isinstance(bar, PriceBar):
-                    raise TypeError("all observations must be normalized PriceBar")
-                if bar.symbol != symbol:
-                    raise ValueError("mixed symbols in single-asset backtest")
-                if previous_end is not None and bar.end_ms <= previous_end:
-                    raise ValueError("bars must have strictly increasing completion times")
-                if (previous_publication is not None
-                        and bar.available_at_ms < previous_publication):
-                    raise ValueError("bar publication timestamps must be monotonic")
-                previous_end = bar.end_ms
-                previous_publication = bar.available_at_ms
-                self._process_bar_open(bar)
+            for event_ms, kind, _, bar in events:
+                if kind == 0:
+                    self._process_bar_open(bar)
+                    continue
+                # Only now is the close known, so signals computed from
+                # this bar cannot influence its own or past bar opens.
                 equity = self._mark(bar.close)
                 if equity <= 0:
                     raise ValueError("nonpositive account equity after mark-to-market")
-                result = self.pipeline.on_bar(bar, at_ms=bar.available_at_ms)
+                result = self.pipeline.on_bar(bar, at_ms=event_ms)
                 if result is not None:
                     self._decisions.append(result)
                     self._handle_decision(result)
                 self._curve.append(EquityPoint(
-                    as_of_ms=bar.available_at_ms,
+                    as_of_ms=event_ms,
                     bar_end_ms=bar.end_ms,
                     close_price=bar.close,
                     cash=self._cash,
