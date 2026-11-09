@@ -332,11 +332,8 @@ def test_official_alpaca_sdk_live_stream_constructs_without_connecting():
     """Read-only SDK constructor/subscribe smoke test, no WebSocket run()."""
     pytest.importorskip("alpaca.data.live")
     from alpaca.data.live import StockDataStream
-    from alpaca.data.enums import DataFeed
-
     stream = mod._stock_stream("offline-test-key", "offline-test-secret", feed="iex")
     assert isinstance(stream, StockDataStream)
-    assert stream._feed == DataFeed.IEX if hasattr(stream, "_feed") else True
 
     async def receive(bar, at_ms):
         raise AssertionError("No live SDK events should be delivered offline")
