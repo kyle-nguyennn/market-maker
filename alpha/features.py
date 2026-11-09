@@ -11,6 +11,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from decimal import Context, Decimal, ROUND_HALF_EVEN, localcontext
+from typing import Sequence
 
 from .domain import FeatureSnapshot, _horizon, _name, _timestamp
 from .market_data import PriceBar
@@ -68,7 +69,7 @@ def _snapshot_id(
 
 
 def build_price_features(
-    bars: tuple[PriceBar, ...] | list[PriceBar],
+    bars: Sequence[PriceBar],
     *, symbol: str, decision_at_ms: int, config: FeatureConfig,
 ) -> FeatureSnapshot:
     """Build a price-feature vector as actually observable at decision_at_ms.
