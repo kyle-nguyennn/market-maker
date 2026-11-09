@@ -352,3 +352,33 @@ def test_later_publication_cannot_retroactively_cancel_earlier_open_fill():
         fill.signed_quantity < 0 and fill.decision_id == f"flip:{5 * MINUTE}"
         for fill in result.fills[1:]
     )
+
+
+def test_strategy_receives_current_portfolio_without_replay_specific_contract():
+    recorded = []
+
+    class PortfolioAwareMomentum(MomentumStrategy):
+        def decide(self, context):
+            assert context.portfolio is not None
+            assert context.portfolio.as_of_ms == context.decision_at_ms
+            assert context.portfolio.equity > 0
+            recorded.append((
+                context.decision_at_ms,
+                context.portfolio.positions[context.symbol],
+                context.portfolio.equity,
+            ))
+            return super().decide(context)
+
+    p = pipeline()
+    p.strategy = PortfolioAwareMomentum(target_weight=D("0.5"))
+    r = CausalBarBacktester(
+        pipeline=p, config=BacktestConfig(latency_ms=1000),
+    ).run(bars()[:7])
+    assert r.fills
+    # bar4 publication creates target; bar6 open occurs BEFORE bar5
+    # publication and fills it, so the bar5 strategy sees holdings.
+    assert recorded[0][0] == 4 * MINUTE + 1000
+    assert recorded[0][1] == 0
+    assert recorded[1][0] == 5 * MINUTE + 1000
+    assert recorded[1][1] > 0
+    assert recorded[1][2] == r.equity_curve[4].equity
