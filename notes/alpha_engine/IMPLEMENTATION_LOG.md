@@ -42,7 +42,8 @@
 
 ## P2-A code inventory (on active branch)
 
-- `alpha/market_data.py` — `PriceBar`, `BarProvider`, strict `read_price_bars_csv`.
+- `alpha/observations.py` — portable immutable `PriceBar` and source-port `BarProvider`; no file I/O.
+- `market_handler/historical_bar_reader.py` — host-owned strict `read_price_bars_csv` returning `PriceBar`. (`alpha/market_data.py` was removed.)
 - `alpha/features.py` — `FeatureConfig`, `build_price_features` with as-of filtering, gap/stale/revision rejection and deterministic Decimal feature values.
 - `alpha/__init__.py` — public exports, with P1 contracts retained.
 - `tests/test_alpha_features.py` — deterministic fixtures for future/late data, duplicates, gaps, stale data, precision, CSV and immutability.
@@ -66,10 +67,22 @@
 
 **Boundary note:** `alpha/` is temporarily vendored into `market-maker`, intentionally standard-library-only so it can be extracted later. `quoter/alpha_strategy_adapter.py` remains in `market-maker` and is not part of the future library. `SignalEngine` currently runs model objects provided by the caller; test fixtures are not validated trading models. Redis/feature store, live WS feed aggregation, session calendars, persistence and production risk/dispatch are not implemented.
 
+## P2-A market-data / alpha boundary cleanup (same PR #16)
+
+- [x] Remove `alpha/market_data.py`, split normalized bar contracts into `alpha/observations.py`, and move CSV parsing/I/O to host `market_handler/historical_bar_reader.py`.
+- [x] Update calculators, feature builder/engine, pipeline, public exports and tests to consume `alpha.observations.PriceBar`; remove host reader from published `alpha.__all__`.
+- [x] Keep one ingestion contract for replay and live: `FeatureEngine.on_bar(PriceBar, at_ms=...)` / `AlphaPipeline.on_bar`.
+- [x] Add `tests/test_market_data_boundary.py` for CSV→normalized bar→FeatureEngine parity, independent replay vs live-style ingestion, and package import separation.
+- [x] Confirm AlpArena is a **paper trade/portfolio API** as documented at [alpharena.io/docs](https://alpharena.io/docs). The current public API does not document an OHLCV/bar feed; use a separate equities data source in the host layer rather than inventing `AlphArenaMarketDataHandler`.
+- [x] Initial boundary-code run [#42591043583](https://github.com/kyle-nguyennn/market-maker/actions/runs/42591043583): **338 passed** under default and PAS modes before adding the boundary-specific tests.
+- [ ] Record final latest-head CI status after updating documentation and new tests; keep PR #16 draft for review.
+
+**Module ownership:** venue/live readers and historical CSV/Parquet providers belong to host `market_handler/` or source-specific adapters; only normalized observation types, FeatureEngine, SignalEngine and Strategy belong inside portable `alpha/`. The existing `market_handler/hyperliquid_market_data_handler.py` is a *different* L2 source adapter and has not been reused for AlpArena.
+
 ## Test command
 
 ```bash
-python -m pytest -q tests/test_alpha_domain.py tests/test_alpha_features.py tests/test_alpha_engines.py
+python -m pytest -q tests/test_alpha_domain.py tests/test_alpha_features.py tests/test_alpha_engines.py tests/test_market_data_boundary.py
 python -m pytest -q
 PERPETUAL_ALPHA_DEX=pas python -m pytest -q
 ```
