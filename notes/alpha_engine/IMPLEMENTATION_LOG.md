@@ -88,8 +88,9 @@
 - [x] Strict no-network tests in `tests/test_alpaca_market_data.py`; a dedicated `.github/workflows/alpaca-market-data-tests.yml` installs the **real SDK** for request model validation.
 - [x] `market_handler/ALPACA.md` documents credentials, read-only examples, historical availability assumption, float precision loss, corrections/rewarm limits and no AlpArena fake market-data endpoint.
 - [x] ADR-015 captures integration boundary and research caveats.
-- [x] **First real SDK CI feedback:** [run #42595183411](https://github.com/kyle-nguyennn/market-maker/actions/runs/42595183411) found `Sort` belongs in `alpaca.common.enums`, **not** `alpaca.data.enums`. Corrected in adapter and smoke test; rerun pending.
-- [ ] Confirm latest offline SDK job and existing full contract suite green at final commit. No real Alpaca API calls or live websocket operations were performed.
+- [x] **Installed SDK compatibility:** [initial run #42595183411](https://github.com/kyle-nguyennn/market-maker/actions/runs/42595183411) caught `Sort` imported from the wrong SDK package; subsequent runs caught value-based TimeFrame comparison and normalized naive-UTC request datetime semantics. Corrected adapter and smoke test.
+- [x] **Last verified pre-stream-smoke run:** [Alpaca SDK #42595645025](https://github.com/kyle-nguyennn/market-maker/actions/runs/42595645025), **16 passed**, SDK 0.45 installed, zero API calls. [Full Hyperliquid contract run #42595645012](https://github.com/kyle-nguyennn/market-maker/actions/runs/42595645012), **353 passed, 1 skipped** in both default and PAS selections; PAS read-only job succeeded. A subsequent change added a real-SDK live constructor/registration smoke test; check newest CI before merging.
+- [ ] Confirm latest Alpaca + default/PAS CI after the additional real-SDK live stream constructor test and documentation updates. No real Alpaca API calls or live WebSocket operations have been performed.
 - [ ] Before production usage: obtain market-data access, collect a small historical fixture and measure actual time/availability, model sessions and revisions, then integrate scheduling/reconnect/backpressure and separate risk gates.
 
 ## Test command
