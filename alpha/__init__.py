@@ -7,7 +7,7 @@ from .calculators import FeatureCalculator, PriceFeatureCalculator
 from .domain import AlphaSignal, FeatureSnapshot, TargetExposure
 from .feature_engine import FeatureEngine, replay_bars
 from .features import FeatureConfig, build_price_features
-from .market_data import BarProvider, PriceBar, read_price_bars_csv
+from .observations import BarProvider, PriceBar
 from .pipeline import AlphaPipeline, PipelineResult, replay_pipeline
 from .signal_engine import SignalEngine
 from .strategies import (
@@ -26,6 +26,6 @@ __all__ = [
     "PortfolioSnapshot", "PriceBar", "PriceFeatureCalculator",
     "QuoteProposal", "SignalEngine", "SignalModel", "Strategy",
     "StrategyContext", "StrategyDecision", "TargetExposure",
-    "build_price_features", "read_price_bars_csv", "replay_bars",
+    "build_price_features", "replay_bars",
     "replay_pipeline",
 ]
