@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from decimal import Decimal, localcontext
+from decimal import Context, Decimal, ROUND_HALF_EVEN, localcontext
 
 from .domain import FeatureSnapshot, _horizon, _name, _timestamp
 from .market_data import PriceBar
@@ -119,8 +119,7 @@ def build_price_features(
 
     # Fixed precision makes results reproducible even if the process-local
     # Decimal context was changed by unrelated code.
-    with localcontext() as context:
-        context.prec = 34
+    with localcontext(Context(prec=34, rounding=ROUND_HALF_EVEN)):
         prices = [bar.close for bar in history]
         unit = Decimal("1")
         returns = [
