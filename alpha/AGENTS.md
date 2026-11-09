@@ -7,6 +7,8 @@ boundary and keep strategy execution and venue wiring outside this directory.
 1. **No imports from other project packages** (`model`, `quoter`,
    `execution`, `portfolio`, `risk`, `exchanges`, `market_handler`).
    Use only standard library and modules internal to `alpha` in P2.
+   Do not add CSV/Parquet readers, HTTP clients, subscriptions, Redis writers
+   or venue-specific parsing here; they belong to the host data adapters.
    Put adapters for the existing MM quoter under `quoter/`, not here.
 2. **Decimals** for every financial numerical value, with finite-value
    validation and deterministic precision. Keep observed data immutable.
