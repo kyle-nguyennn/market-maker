@@ -156,3 +156,22 @@ Implement one conservative fixed-rule `AlphaStrategy` baseline against `momentum
 **Evidence:** `tests/test_market_data_boundary.py` checks identical replay/live feature behavior from host-ingested bars and guards the package-import boundary. `tests/test_alpha_features.py` continues validating CSV fidelity and as-of computation after the move.
 
 **Known follow-up:** `BarProvider` is only a source-port Protocol; this PR ships a CSV function, not a full provider implementation, async market-data bus, or source registry. Venue-neutral multi-feed subscription, equity exchange calendars and controlled historical publication lags are separate tasks.
+
+
+## ADR-015 — Official Alpaca SDK as optional US-equities bar source
+
+**Date:** 2026-11-09. **Status:** Accepted.
+
+**Decision:** Integrate official `alpaca-py==0.45.0` in **host-side** `market_handler/alpaca_stock_market_data.py` with independent `AlpacaHistoricalBarProvider` and `AlpacaMinuteBarStream`. Optional dependency is isolated in `requirements/alpaca.txt`; importing `alpha/` or the market-data adapter does not import `alpaca-py` unless an SDK client/request is explicitly constructed. No Alpaca TradingClient, order API, or AlphArena trading API calls.
+
+**Shared contract:** Both sources emit `alpha.observations.PriceBar`, with exact integer UTC timestamps and Decimal OHLCV. Alpaca `Bar.timestamp` is **bar start**; normalize `end_ms = start_ms + 60_000`. SDK numeric fields may already be Python floats; use `Decimal(str(value))` and document that wire precision previously lost by the SDK cannot be restored.
+
+**History:** `StockHistoricalDataClient.get_stock_bars(StockBarsRequest(...))` using explicit feed (default IEX), adjustment (default RAW), configured history start, SDK Minute timeframe and user-provided `until_ms`. Historical Alpaca bars **do not** report when that specific price/adjusted value was first published or revised. Require an explicit `assumed_publication_lag_ms` and encode it, feed, adjustment and caller-specified `source_version` in `PriceBar.source`. Exclude bars not complete or not available under that assumed lag as of requested time. This is **not** historically observed PIT availability and must not be claimed as such.
+
+**Live:** `StockDataStream.subscribe_bars(async_handler, *symbols)`; `run()` starts an **explicit blocking** WebSocket loop. Normalize only completed bars and set `available_at_ms` to caller-measured UTC callback receipt. Forward through a caller-supplied asynchronous `on_bar(PriceBar, at_ms)` that may pass directly to `FeatureEngine`/`AlphaPipeline`. No strategy-visible feed flag. **Do not** subscribe to `subscribe_updated_bars` until a revision policy can reconcile an already-published bar without look-ahead or silently rewriting feature lineage. Live and history source identities are intentionally distinct to prevent implicit mixed provenance in one rolling engine.
+
+**Non-goals:** Alpaca paper/live trading, Alpaca account reads, AlphArena order/position submissions, durable historical capture, order-book microstructure, exchange-calendar adjustment, reconnection/backpressure controls and actual SDK live/historical key-backed requests. Stale/missing minute bars still force FeatureEngine warmup per ADR-011; a dedicated session-aware normalizer is required for US equity overnight/weekend/holiday boundaries.
+
+**Validation:** `tests/test_alpaca_market_data.py` provides network-free fake SDK historical/live parity tests and a real-import SDK request-model smoke test that runs only when `alpaca-py` is installed. A dedicated workflow installs the pinned real SDK but makes no remote/API/authenticated requests. Never treat a green mock/SDK constructor test as a proof of live source behavior or historical adjustment accuracy.
+
+**Alternatives rejected:** Treating AlpArena as a stock-data vendor without a documented market feed; mixing historical inferred availability with measured live receive timestamps; making the alpha package depend directly on Alpaca SDK or its floats; wiring the trading SDK into a market-data handler.
