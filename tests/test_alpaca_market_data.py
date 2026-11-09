@@ -321,6 +321,7 @@ def test_official_alpaca_sdk_request_contract_if_dependency_installed():
     assert request.feed == DataFeed.IEX
     assert request.adjustment == Adjustment.RAW
     assert request.sort == Sort.ASC
-    assert request.timeframe == TimeFrame.Minute
+    assert request.timeframe.amount == TimeFrame.Minute.amount
+    assert request.timeframe.unit == TimeFrame.Minute.unit
     assert request.start == BASE
     assert request.end == BASE + timedelta(minutes=3)
