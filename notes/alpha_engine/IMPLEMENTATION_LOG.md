@@ -50,10 +50,26 @@
 
 **P2-A limitations:** no vendor feed or stock market calendar; strict UTC bar continuity is unsuitable across market closures. Features are observations, not predictive strategies; no trading permission, portfolio sizing or backtest P&L. See ADR-007 and handoff.
 
+## P2-A architecture refactor — shared engines and Strategy families (same PR #16)
+
+- [x] Extract pure `FeatureCalculator` Protocol and `PriceFeatureCalculator` reference class; `build_price_features` delegates calculation.
+- [x] Add bounded rolling `FeatureEngine.on_bar(bar, at_ms=...)` with time/source/sequence gates, warmup and gap reset.
+- [x] Add independent `SignalEngine.on_features(snapshot, generated_at_ms=...)` and clock-injected `SignalModel.predict` with signal provenance checks. Preserve legacy P1 `AlphaStrategy` protocol.
+- [x] Add `StrategyContext` (market/features/signals/portfolio), `Strategy.decide` and `StrategyDecision` with explicit exposure or quote proposal output.
+- [x] Add `MomentumStrategy` and `MeanReversionStrategy` as **fixed threshold policy skeletons**. No fitted alpha predictor or parameter selection yet.
+- [x] Add `quoter/alpha_strategy_adapter.py`: wrap legacy `BaseMMQuoter` or future context-aware quoter without importing market-maker modules from `alpha/`.
+- [x] Add `AlphaPipeline.on_bar` and `replay_pipeline`; historical and live-style bar inputs use the same engine and strategy method.
+- [x] Extend `tests/test_alpha_engines.py` with replay/live equivalence, schema/source isolation, out-of-order and gap recovery, immutable portfolio, signal lineage, directional family and MM adapter tests.
+- [x] Capture extraction boundary and engine/policy decisions in ADR-010..013 and handoff.
+- [x] **CI evidence (pre-notes-update):** [run #42579976084](https://github.com/kyle-nguyennn/market-maker/actions/runs/42579976084) at code commit `1a6159e987396d3794e69a71cfd76e092c36aff4`, **338 passed** in default and PAS configurations. Read-only PAS job passed; no authenticated AlphArena operations.
+- [ ] Verify CI for latest documentation HEAD before P2-A merge; leave PR #16 draft pending review.
+
+**Boundary note:** `alpha/` is temporarily vendored into `market-maker`, intentionally standard-library-only so it can be extracted later. `quoter/alpha_strategy_adapter.py` remains in `market-maker` and is not part of the future library. `SignalEngine` currently runs model objects provided by the caller; test fixtures are not validated trading models. Redis/feature store, live WS feed aggregation, session calendars, persistence and production risk/dispatch are not implemented.
+
 ## Test command
 
 ```bash
-python -m pytest -q tests/test_alpha_domain.py tests/test_alpha_features.py
+python -m pytest -q tests/test_alpha_domain.py tests/test_alpha_features.py tests/test_alpha_engines.py
 python -m pytest -q
 PERPETUAL_ALPHA_DEX=pas python -m pytest -q
 ```
