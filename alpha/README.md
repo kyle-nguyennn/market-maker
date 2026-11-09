@@ -43,6 +43,26 @@ public contract.
 `FeatureEngine` does not own HTTP requests or a persistent database. The live
 hot path must not depend on Redis or block on historical archiving.
 
+## Boundary to host market-data adapters
+
+`alpha/observations.py` defines the validated, immutable `PriceBar` schema and
+the optional `BarProvider` read-only source Protocol. It **does not** fetch,
+subscribe, decode CSV, select a market-data vendor, or construct venue API
+requests. Host ingestion lives in `market_handler/`, currently:
+`market_handler/historical_bar_reader.py::read_price_bars_csv`.
+
+A host data adapter (historical CSV/Parquet, external equity provider, or
+future live bar aggregator) must publish normalized `PriceBar` values using
+the same `end_ms` (completed-bar time), `available_at_ms` (publication time),
+`interval_ms`, `source` revision and exact Decimal OHLCV representation.
+`FeatureEngine` receives these without knowing which adapter produced them.
+
+`market_handler/hyperliquid_market_data_handler.py` currently handles
+Hyperliquid **L2 book snapshots**, not OHLCV bars. `AlphArenaClient` is a
+paper-position/portfolio API client, not an equities OHLCV feed; the published
+AlphArena REST API does not document a bar endpoint. Use a separate host market
+data provider for AlphArena research until one is actually documented.
+
 ## Public interfaces
 
 - `PriceBar` — validated immutable, complete OHLCV observation, with completed
