@@ -5,7 +5,7 @@
 ## First five minutes
 
 1. Read [README](./README.md), [DESIGN_DECISIONS](./DESIGN_DECISIONS.md), [IMPLEMENTATION_LOG](./IMPLEMENTATION_LOG.md) and `exchanges/alpharena/NOTES.md`.
-2. Inspect `model/AGENTS.md`, `alpha/domain.py`, `alpha/market_data.py`, `alpha/features.py`, `alpha/strategy.py`, `tests/test_alpha_features.py` and existing order/quote adapters (do not modify them for P2-A).
+2. Inspect `model/AGENTS.md`, `alpha/domain.py`, `alpha/calculators.py`, `alpha/features.py`, `alpha/feature_engine.py`, `alpha/signal_engine.py`, `alpha/strategy.py`, `alpha/strategies.py`, `alpha/pipeline.py`, `quoter/alpha_strategy_adapter.py` and `tests/test_alpha_engines.py`.
 3. Get the latest P2-A PR number/head SHA and check GitHub Actions. Test the latest commit; do not reuse earlier successful check results for newer commits.
 4. Keep prices/features finite `Decimal`, snapshots immutable, and code free of venue SDKs and submission paths. Preserve P1 exports.
 5. Append or revise the implementation log with actual CI links, known failures and next-agent instructions. Add ADRs for changed decisions.
@@ -19,9 +19,38 @@
 - Validates no duplicate bar ends, no gaps inside the lookback, no stale latest bar, no mixed source/interval. Future data does not influence features or snapshot ID.
 - Tests cover near-future observations, late publications, duplicate revisions, strict CSV values, config validation, caller Decimal context and immutable models.
 
+## Updated architecture: reusable vendored library
+
+```text
+PriceBar (live or replay) -> FeatureEngine.on_bar
+                              |-- bounded rolling window
+                              |-- PriceFeatureCalculator (pure)
+                              v
+                          FeatureSnapshot
+                              v
+                          SignalEngine / SignalModel.predict
+                              v
+                          AlphaSignal[]
+                              v
+                     StrategyContext + MarketView + PortfolioSnapshot
+                              v
+                        Strategy.decide
+                         /           \\
+                 TargetExposure[]  QuoteProposal[]
+                         |           |
+                      risk/venue execution (future)
+```
+
+- The entire `alpha/` directory is **vendored-for-now**. Do not import `model/`, `quoter/`, `exchanges/`, or external SDKs into it. Later packaging/extraction can preserve its public interface without migrating it now.
+- Market-maker-specific `MarketMakingStrategy` wraps `BaseMMQuoter` at `quoter/alpha_strategy_adapter.py`; context-aware quoters implement `quote_context(context)` to read signals/features. Historical or live origins are deliberately absent from `StrategyContext`.
+- New policies implement `Strategy.decide(context)`, not P1's old `AlphaStrategy.generate_signal(snapshot)`. The older protocol stays for compatibility; new predictors implement `SignalModel.predict(snapshot, generated_at_ms=...)`.
+- `MomentumStrategy` / `MeanReversionStrategy` currently only turn an **existing forecast** into a fixed desired weight. They are not calibrated alpha models, do not estimate returns themselves, and cannot trade. Explicit input models must be supplied to `SignalEngine`.
+- Reference `PriceFeatureCalculator` recomputes from a small bounded OHLCV window for exact reproducibility. Incremental O(1) feature updates and event-level SHIFT calculators belong to later performance/feature work.
+- The pipeline returns non-executable decisions. There is no market-data-store reader on the live hot path, no risk bypass, no broker integration, and no live trading authorization.
+
 ## Priority follow-ups
 
-1. Validate P2-A latest-head CI, fix test failures, review and merge when approved. Nothing in P2-A submits signals or trades.
+1. Validate P2-A latest-head CI, fix test failures, review and merge when approved. CI run #42579976084 passed 338 tests twice on the engine-refactor code commit; verify newer documentation commits separately. Nothing in P2-A submits signals or trades.
 2. **P2-B: build a market-session-aware historical data normalizer.** Strict `interval_ms` contiguity in P2-A rejects overnight/weekend/holiday gaps in real equity price bars. Choose an exchange calendar/timezone, explicit corporate-action adjustment semantics, point-in-time vendor revision rules and missing-bar policy. Add adversarial market session tests before treating AlphArena equities as credible historical research input.
 3. Build a documented fixed-rule trend baseline against `AlphaStrategy`, with an explicit, calibratable mapping from historical momentum to a signed *forecast* and a known forecast horizon. Do not equate trailing return with predicted return without justification.
 4. Then add fixed momentum/reversion, static ensemble, regime selector, and cost-aware walk-forward evaluation with exact same observation set, leakage restrictions and turnover accounting.
