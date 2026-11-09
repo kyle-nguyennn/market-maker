@@ -1,12 +1,12 @@
 # Next-agent handoff — shared alpha engine
 
-**Date:** 2026-11-09; **active strategy branch:** `feat/alpha-strategy-baselines`; **base:** `main` with merged P1 [PR #15](https://github.com/kyle-nguyennn/market-maker/pull/15) and P2 [PR #16](https://github.com/kyle-nguyennn/market-maker/pull/16), squash commit `4956b350a34b1640285538a4aa8e6713352679cd`. **Current draft:** [PR #17](https://github.com/kyle-nguyennn/market-maker/pull/17).
+**Date:** 2026-11-09; **active P3 backtest branch:** `feat/alpha-p3-causal-backtest`; **base:** `main` with P1 [PR #15](https://github.com/kyle-nguyennn/market-maker/pull/15), P2 [PR #16](https://github.com/kyle-nguyennn/market-maker/pull/16), and merged P2-C [PR #17](https://github.com/kyle-nguyennn/market-maker/pull/17), squash commit `5bf9fb77fec846ca92e8b92e72c1928b18a247f0`. **Current draft:** [PR #18](https://github.com/kyle-nguyennn/market-maker/pull/18).
 
 ## First five minutes
 
 1. Read [README](./README.md), [DESIGN_DECISIONS](./DESIGN_DECISIONS.md), [IMPLEMENTATION_LOG](./IMPLEMENTATION_LOG.md) and `exchanges/alpharena/NOTES.md`.
 2. Inspect `model/AGENTS.md`, `alpha/observations.py`, `alpha/calculators.py`, `alpha/features.py`, `alpha/feature_engine.py`, `alpha/signal_engine.py`, `alpha/signal_models.py`, `alpha/strategy.py`, `alpha/strategies.py`, `alpha/strategy_engine.py`, `alpha/pipeline.py`, `quoter/alpha_strategy_adapter.py`, `alpha/STRATEGIES.md` and `tests/test_alpha_strategy_baselines.py`.
-3. Get the latest [PR #17](https://github.com/kyle-nguyennn/market-maker/pull/17) head SHA and its GitHub Actions jobs. Test the latest commit; do not reuse earlier successful check results for newer commits.
+3. Get the latest [PR #18](https://github.com/kyle-nguyennn/market-maker/pull/18) head SHA and its GitHub Actions jobs. Test that commit; do not treat earlier green checks as valid for a newer head.
 4. Keep prices/features finite `Decimal`, snapshots immutable, and code free of venue SDKs and submission paths. Preserve P1 exports.
 5. Append or revise the implementation log with actual CI links, known failures and next-agent instructions. Add ADRs for changed decisions.
 
@@ -124,12 +124,57 @@ PriceBar (live or replay) -> FeatureEngine.on_bar
   policies with fees, turnover, slippage and benchmark. Avoid implementing
   a regime-aware policy selector on unmeasured baselines.
 
+## P3-A offline causal backtesting (current PR #18, ADR-018)
+
+- New host-side `backtest/` package, not merged or imported by `alpha/`.
+  The existing `AlphaPipeline.on_bar` and `Strategy.decide` remain the
+  only strategy decision contracts. This is a **single asset, single policy**
+  simulator for desired target exposures, not an order router.
+- `CausalBarBacktester` MUST process each historical bar as **two separate,
+  globally ordered events**: OPEN at `end_ms - interval_ms`, publication
+  at `available_at_ms`. OPEN precedes publication on ties.
+  **Regression rationale:** when bar N+1 opens at 10:02:00 but bar N
+  publishes at 10:02:01.500, a decision made by the latter cannot alter
+  the fill already simulated at 10:02:00. Processing complete bars one
+  by one violates this. A test explicitly catches cancellation after
+  the opening.
+- Fills only occur at the first future opening satisfying
+  `decision_at + latency <= open_time <= expiry`, with expiry limited
+  by configured order TTL and target forecast horizon. Cash/position
+  ledger uses fixed Decimal, average entry, realized/unrealized P&L,
+  fee/slippage, target limits and quantity step. Same pending target
+  does not restart latency. Abstention means hold, not flatten.
+- Mark account equity at bar publication using **chronologically freshest
+  observed open or published close**, not automatically that bar's close.
+  Some next-minute opens are visible before the previous bar's delayed
+  publication; a future BAR CLOSE is still unavailable. `EquityPoint`
+  records both `close_price` and `mark_price`.
+- `apps/backtest_alpha.py` has local normalized CSV replay and optional
+  *read-only* Alpaca historical fetch, with momentum/reversion/cash CLI
+  family, explicit model and cost parameters, JSON metrics and optional
+  fill/equity CSV exports. `backtest/README.md` documents commands,
+  examples, bias limitations; `backtest/AGENTS.md` states invariants.
+- Tests `tests/test_alpha_causal_backtest.py` and
+  `tests/test_alpha_backtest_cli.py` cover causal chronology, short/long
+  accounting, historical future-close mutation, realistic order expiry,
+  cost reconciliation, no-trade and deterministic CSV report.
+- [Full CI #42601233788](https://github.com/kyle-nguyennn/market-maker/actions/runs/42601233788):
+  **423 passed, 2 skipped** in both default and PAS configurations, PAS
+  read-only successful, no trading. Confirm latest PR #18 HEAD after docs.
+- **No claim of true PIT/backtest performance:** Alpaca historical
+  publication-lag is assumed. Bar-open fills are an idealized price model,
+  not evidence of actual access to that liquidity. No L2 maker fills,
+  borrow/financing/dividends, slippage calibration or partial fills.
+- **Immediate next milestone:** US equity session/no-trade interval
+  normalization and walk-forward comparator with frozen parameters,
+  transaction-cost sensitivity and a buy-and-hold control.
+
 ## Priority follow-ups
 
-1. Validate latest PR #17 head CI for all project suites and SDK-only offline tests; review and merge the separate strategy-baselines PR when authorized.
-2. **Session-aware equities normalization (P2-B):** current FeatureEngine requires contiguous minute bars and will rewarm across US equity session boundaries. Specify holiday/DST/split/adjustment/revision policies and validate actual Alpaca source semantics before using paper outcomes as research evidence.
-3. **Walk-forward evaluation (P3):** compare fixed momentum/reversion/no-trade (then static ensembles) over identical point-in-time data and forecast horizons, with transaction fees, position turnover, slippage and realistic execution assumptions. Never tune on the holdout.
-4. **Strategy selection:** only after P3, research regime-aware selection/portfolio composition and route authorized exposure decisions to AlphArena; separately evaluate maker fill quality and adverse selection with SHIFT.
+1. Verify [PR #18](https://github.com/kyle-nguyennn/market-maker/pull/18) latest-head CI and review its simulated fill/mark chronology. Leave draft until reviewed/explicitly merged.
+2. **P2-B US equity session policy:** `FeatureEngine` still rejects gapped 1-minute bars; add calendar/DST, halts, market closures, non-trading minutes, historical revisions, split/dividend availability and post-gap warmup semantics.
+3. **P3-B walk-forward comparison:** frozen-parameter momentum/reversion/cash/buy-hold controls using identical point-in-time feature streams, training/validation/test separation, fee/slippage sensitivity and exposure/turnover metrics. No parameter fitting on holdout.
+4. **Later:** multi-symbol risk portfolios, liquidity-aware partial-fill model, controlled AlphArena paper forward-testing and SHIFT order-book/maker-fill simulation separately. Nothing in PR #18 sends trades.
 
 ## Acceptance and guardrails
 
