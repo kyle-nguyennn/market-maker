@@ -156,11 +156,11 @@ def test_feature_engine_rejects_future_and_backwards_clock():
     engine = FeatureEngine(symbol="AAPL", config=config())
     with pytest.raises(ValueError, match="not yet available"):
         engine.on_bar(bar(1), at_ms=1000)
-    engine.on_bar(bar(1), at_ms=1020)
+    engine.on_bar(bar(1), at_ms=3020)
     with pytest.raises(ValueError, match="clock moved backwards"):
-        engine.on_bar(bar(2, available_at_ms=2000), at_ms=1000)
+        engine.on_bar(bar(2), at_ms=2020)
     with pytest.raises(ValueError, match="before last ingested"):
-        engine.snapshot(at_ms=1019)
+        engine.snapshot(at_ms=3019)
     engine.reset()
     assert engine.bars_buffered == 0
     assert engine.on_bar(bar(1), at_ms=1020) is None
@@ -252,7 +252,7 @@ def test_portfolio_context_immutable_and_future_inputs_rejected():
                         market=market(timestamp_ms=5000))
 
 
-class TestQuoter(BaseMMQuoter):
+class SimpleTestQuoter(BaseMMQuoter):
     def fair_price(self, state):
         return state.mid
 
@@ -275,7 +275,7 @@ def test_existing_mmquoter_is_a_unified_strategy_family():
         symbol="AAPL", decision_at_ms=4020, features=features,
         signals=(), market=market(),
     )
-    adapter = MarketMakingStrategy(TestQuoter(), strategy_id="maker-v1")
+    adapter = MarketMakingStrategy(SimpleTestQuoter(), strategy_id="maker-v1")
     assert isinstance(adapter, Strategy)
     decision = adapter.decide(ctx)
     assert decision.exposures == ()
