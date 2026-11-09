@@ -85,6 +85,8 @@ class ShiftVenueClient:
                 else self.sdk.Order.Type.MARKET_BUY)
         order = self.sdk.Order(kind, symbol, int(lots))
         self.trader.submit_order(order)
+        if not order.id:
+            raise RuntimeError("SHIFT market-close id missing; reconcile before retry")
         return str(order.id)
 
     def cancel_symbol(self, symbol: str) -> int:
