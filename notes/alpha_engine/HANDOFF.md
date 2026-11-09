@@ -158,9 +158,11 @@ PriceBar (live or replay) -> FeatureEngine.on_bar
   `tests/test_alpha_backtest_cli.py` cover causal chronology, short/long
   accounting, historical future-close mutation, realistic order expiry,
   cost reconciliation, no-trade and deterministic CSV report.
-- [Full CI #42601233788](https://github.com/kyle-nguyennn/market-maker/actions/runs/42601233788):
-  **423 passed, 2 skipped** in both default and PAS configurations, PAS
-  read-only successful, no trading. Confirm latest PR #18 HEAD after docs.
+- [Full CI #42601770282](https://github.com/kyle-nguyennn/market-maker/actions/runs/42601770282):
+  **424 passed, 2 skipped** in both default and PAS configurations, scored PAS
+  read-only successful, no trading. Extra regression verifies the replayed
+  `StrategyContext.portfolio` reflects actual simulated position/equity as-of
+  each publication. Confirm latest PR #18 HEAD after docs.
 - **No claim of true PIT/backtest performance:** Alpaca historical
   publication-lag is assumed. Bar-open fills are an idealized price model,
   not evidence of actual access to that liquidity. No L2 maker fills,
